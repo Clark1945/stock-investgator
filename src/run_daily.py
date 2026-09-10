@@ -18,6 +18,7 @@ from src.collectors import (
     company_profile,
     fundamentals,
     fx_rates_macro,
+    institutional_flow,
     passive_flows,
     relative_valuation,
     stock_ohlc,
@@ -36,6 +37,7 @@ COLLECTORS = [
     stock_ohlc,
     company_profile,
     announcements,
+    institutional_flow,
 ]
 
 DEFAULT_LOOKBACK_DAYS = 5

@@ -56,6 +56,8 @@ twse:
   monthly_revenue_history: "https://mopsov.twse.com.tw/nas/t21/sii/t21sc03_{roc_year}_{month}_0.html"
   # 上市公司每日重大訊息：只回傳「當天」全部上市公司公告，無歷史查詢，需每日執行累積
   material_announcements: "https://openapi.twse.com.tw/v1/opendata/t187ap04_L"
+  # 三大法人買賣超日報（個股層級，依日期，全市場單一檔案，可回補歷史日期）
+  institutional_flow_daily: "https://www.twse.com.tw/rwd/zh/fund/T86?date={date}&selectType=ALL&response=json"
 
 # MOPS 法人說明會一覽表：兩段式簽章網址(先跟 redirectToOld 換取一次性網址，再GET該網址取內容)
 investor_conference:

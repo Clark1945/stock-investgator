@@ -183,6 +183,34 @@ else:
     st.plotly_chart(fig_vol, use_container_width=True)
 
 st.divider()
+st.header(f"{picked} 三大法人買賣超")
+flow_codes = [f"foreign_net_{code}", f"trust_net_{code}", f"dealer_net_{code}", f"institutional_net_{code}"]
+df_flow = load_df(flow_codes, start_date, end_date)
+
+if df_flow.empty:
+    st.info("此個股目前尚無三大法人買賣超資料。")
+else:
+    table_flow = pd.DataFrame(
+        {
+            "外資(張)": df_flow[df_flow["indicator_code"] == f"foreign_net_{code}"].set_index("date")["value"] / 1000,
+            "投信(張)": df_flow[df_flow["indicator_code"] == f"trust_net_{code}"].set_index("date")["value"] / 1000,
+            "自營商(張)": df_flow[df_flow["indicator_code"] == f"dealer_net_{code}"].set_index("date")["value"] / 1000,
+            "三大法人合計(張)": df_flow[df_flow["indicator_code"] == f"institutional_net_{code}"].set_index("date")["value"] / 1000,
+        }
+    )
+    table_flow.index = table_flow.index.strftime("%Y-%m-%d")
+    table_flow.index.name = "日期"
+    table_flow = table_flow.sort_index(ascending=False).head(20)
+
+    fmt_flow = {c: "{:+,.0f}" for c in table_flow.columns}
+    st.dataframe(table_flow.style.format(fmt_flow, na_rep="—"), use_container_width=True)
+
+st.caption(
+    "三大法人買賣超資料來源為 TWSE 三大法人買賣超日報，已涵蓋全部上市普通股、回補至 2025-01，"
+    "並會隨每日執行自動更新；正值代表買超、負值代表賣超，單位為張（原始股數/1000）。"
+)
+
+st.divider()
 st.header(f"{picked} 月營收")
 rev_codes = [f"monthly_revenue_{code}", f"monthly_revenue_mom_{code}", f"monthly_revenue_yoy_{code}"]
 df_rev = load_df(rev_codes, start_date, end_date)
