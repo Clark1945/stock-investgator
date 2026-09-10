@@ -99,16 +99,16 @@ def _render_pagination(df: pd.DataFrame, key: str) -> None:
 
 
 def _stock_link(code: str) -> str:
-    """組成「代號.TW連結#公司名稱(代號)」字串：真正的連結網址不受影響(#後面是網址片段，
-    Yahoo會忽略)，同時可以用 LinkColumn 的 display_text 正規表示式把 #後面的文字抓出來當顯示文字，
-    藉此在同一欄同時做到「可點連結」+「顯示公司名稱(代號)」。
+    """連到本專案自己的「個股分析」頁(帶 ?code=xxxx 讓該頁預設選中這檔股票)，
+    網址片段(#後面)夾帶顯示文字，靠 LinkColumn 的 display_text 正規表示式抓出來顯示成
+    「公司名稱(代號)」，不影響實際導頁用的query string。
     """
     label = f"{name_map.get(code, code)}({code})"
-    return f"https://tw.stock.yahoo.com/quote/{code}.TW#{label}"
+    return f"個股分析?code={code}#{label}"
 
 
 def _render_table(df: pd.DataFrame, int_cols: list[str], pct_cols: list[str] | None = None, price_cols: list[str] | None = None) -> None:
-    """用原生 st.dataframe 呈現，股票欄合併了公司名稱、代號、Yahoo股市連結，
+    """用原生 st.dataframe 呈現，股票欄合併了公司名稱、代號、連到個股分析頁的連結，
     數值欄位(int_cols/pct_cols/price_cols)點欄位標題即可排序。
     """
     column_config = {
@@ -162,7 +162,8 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
     pivot_rev = pivot_rev.reindex(columns=target_months)
 
     month_labels = [pd.to_datetime(m).strftime("%Y-%m") for m in target_months]
-    rev_col_names = [f"月營收 {m}(千元，月增幅)" for m in month_labels]
+    rev_col_names = [f"月營收 {m}(千元)" for m in month_labels]
+    mom_col_names = [f"月增幅 {m}(%)" for m in month_labels]
     qualifying_codes = [c for c in qualifying.index if c in pivot_rev.index]
 
     # 抓最近10個日曆天的OHLC(至少涵蓋2個交易日)，用來算「今日 vs 前一交易日」的漲跌幅。
@@ -205,7 +206,8 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
             "交易量漲跌(%)": volume_chg_pct,
         }
         for i in range(n):
-            row[rev_col_names[i]] = f"{int(revs.iloc[i]):,}(+{moms.iloc[i]:.2f}%)"
+            row[rev_col_names[i]] = int(revs.iloc[i])
+            row[mom_col_names[i]] = float(moms.iloc[i])
         result_rows.append(row)
 
     if not result_rows:
@@ -227,8 +229,8 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
     page_df = _paginate(result_df, key=page_key)
     _render_table(
         page_df,
-        int_cols=["排名", "當日交易量(張)"],
-        pct_cols=["股價漲跌(%)", "交易量漲跌(%)"],
+        int_cols=["排名", "當日交易量(張)"] + rev_col_names,
+        pct_cols=["股價漲跌(%)", "交易量漲跌(%)"] + mom_col_names,
         price_cols=["當日股價"],
     )
     _render_pagination(result_df, key=page_key)
@@ -250,4 +252,4 @@ elif active_screen in ("連續二個月營收正成長股票", "連續三個月�
     with st.expander("查看篩選結果", expanded=True, key=f"result_expander_{n_months}"):
         _screen_consecutive_positive_revenue_months(n_months)
 
-        st.caption("資料來源同「個股分析」頁的月營收（MOPS 月營收歷史彙總檔），點「股票」欄會開新分頁到 Yahoo奇摩股市查看即時股價。")
+        st.caption("資料來源同「個股分析」頁的月營收（MOPS 月營收歷史彙總檔），點「股票」欄會跳到本站的「個股分析」頁並自動選中該檔股票。")

@@ -47,7 +47,15 @@ if not options_sorted:
     st.info("此產業別目前尚無任何個股資料。")
     st.stop()
 
-default_idx = options_sorted.index("台積電(2330)") if "台積電(2330)" in options_sorted else 0
+# 若從「客製化搜尋」頁的連結點過來(網址帶 ?code=xxxx)，預設直接選中該檔股票。
+default_label = "台積電(2330)"
+query_code = st.query_params.get("code")
+if query_code:
+    matched = next((label for label, c in stock_options.items() if c == query_code), None)
+    if matched:
+        default_label = matched
+
+default_idx = options_sorted.index(default_label) if default_label in options_sorted else 0
 picked = st.selectbox("搜尋個股（輸入代號或名稱）", options_sorted, index=default_idx)
 
 code = stock_options[picked]
