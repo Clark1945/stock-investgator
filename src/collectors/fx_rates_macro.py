@@ -30,6 +30,8 @@ def collect_yfinance_indicators(start_date: str, end_date: str) -> int:
     tickers = SETTINGS["yfinance_tickers"]
     mapping = {
         "usdtwd": ("台幣兌美元匯率", tickers["usdtwd"], False),
+        "usdjpy": ("美元兌日圓匯率", tickers["usdjpy"], False),
+        "usdcny": ("美元兌人民幣匯率", tickers["usdcny"], False),
         "dxy": ("美元指數 DXY", tickers["dxy"], False),
         "vix": ("VIX 恐慌指數", tickers["vix"], False),
         "msci_em_proxy": ("MSCI新興市場指數代理(EEM)", tickers["eem_etf"], True),

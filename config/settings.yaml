@@ -5,6 +5,8 @@ backfill_start_date: "2026-01-01"
 # --- yfinance tickers ---
 yfinance_tickers:
   usdtwd: "TWD=X"
+  usdjpy: "JPY=X"
+  usdcny: "CNY=X"
   dxy: "DX-Y.NYB"
   vix: "^VIX"
   sox: "^SOX"

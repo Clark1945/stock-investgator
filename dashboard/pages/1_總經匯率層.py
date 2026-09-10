@@ -15,13 +15,27 @@ st.title("一、總經/匯率層 — 決定「要不要來」")
 start_date, end_date = date_range_sidebar()
 
 st.header("匯率與資金流動")
-codes = ["usdtwd", "dxy", "foreign_net_buy_sell_proxy"]
+codes = ["usdtwd", "usdjpy", "usdcny", "dxy", "foreign_net_buy_sell_proxy"]
 df = load_df(codes, start_date, end_date)
-metric_cards(df, [("usdtwd", "台幣兌美元"), ("dxy", "美元指數DXY"), ("foreign_net_buy_sell_proxy", "外資買賣超(代理)")])
+metric_cards(
+    df,
+    [
+        ("usdtwd", "台幣兌美元"),
+        ("usdjpy", "美元兌日圓"),
+        ("usdcny", "美元兌人民幣"),
+        ("dxy", "美元指數DXY"),
+        ("foreign_net_buy_sell_proxy", "外資買賣超(代理)"),
+    ],
+)
 c1, c2 = st.columns(2)
 with c1:
     line_chart(df, "usdtwd")
 with c2:
+    line_chart(df, "usdjpy")
+c3, c4 = st.columns(2)
+with c3:
+    line_chart(df, "usdcny")
+with c4:
     line_chart(df, "dxy")
 line_chart(df, "foreign_net_buy_sell_proxy")
 
