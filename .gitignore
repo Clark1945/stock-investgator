@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+data/*.db
+logs/*.log
+config/.env
+.venv/
+venv/
+.claude/scheduled_tasks.lock

@@ -1,0 +1,107 @@
+# 全域設定：回補起始日、各資料源代碼對照
+
+backfill_start_date: "2026-01-01"
+
+# --- yfinance tickers ---
+yfinance_tickers:
+  usdtwd: "TWD=X"
+  dxy: "DX-Y.NYB"
+  vix: "^VIX"
+  sox: "^SOX"
+  kospi: "^KS11"
+  samsung: "005930.KS"
+  sk_hynix: "000660.KS"
+  nasdaq: "^IXIC"
+  nvda: "NVDA"
+  tsm_adr: "TSM"
+  tsmc_tw: "2330.TW"
+  ewt_etf: "EWT"     # iShares MSCI Taiwan ETF (EPFR/MSCI Taiwan 權重代理)
+  aaxj_etf: "AAXJ"   # iShares MSCI Asia ex Japan ETF (MSCI 亞洲不含日 指數代理)
+  eem_etf: "EEM"     # iShares MSCI Emerging Markets ETF (MSCI 新興市場 指數代理)
+  spy_etf: "SPY"     # 美股大盤 P/E 對照
+  ewy_etf: "EWY"     # 韓股 P/E 對照
+
+# 台積電 ADR 對台股比例：1 ADR = 5 普通股
+tsm_adr_ratio: 5
+
+# --- FRED series（需 FRED_API_KEY，缺 key 時自動略過） ---
+fred_series:
+  us_10y_yield: "DGS10"
+  us_2y_yield: "DGS2"
+  fed_rate_upper: "DFEDTARU"
+  fed_rate_lower: "DFEDTARL"
+  # NAPM(ISM製造業PMI)已被FRED下架(ISM收回授權)，改用紐約聯準銀行Empire State製造業調查
+  # 現況指數作為免費替代代理，同樣是市場常用的製造業景氣領先指標。
+  ism_pmi_proxy: "GACDISA066MSFRBNY"
+
+# --- TWSE OpenAPI / CSV 端點 ---
+twse:
+  # 三大法人買賣金額統計（依日期，需 date=YYYYMMDD）
+  institutional_investors: "https://www.twse.com.tw/rwd/zh/fund/BFI82U?dayDate={date}&response=csv"
+  # 個股日本益比、殖利率及股價淨值比（依日期查詢，全部個股）
+  pe_pb_yield: "https://www.twse.com.tw/rwd/zh/afterTrading/BWIBBU_d?date={date}&response=csv"
+  # 信用交易(融資融券)統計（依日期）
+  margin_trading: "https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date={date}&response=csv"
+  # 融券借券賣出餘額（依日期，逐股列，需加總「借券賣出-當日餘額」欄位）
+  securities_lending: "https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U?date={date}&response=csv"
+  # 加權指數日成交資訊（依日期，含收盤指數）
+  taiex_index: "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={date}&type=IND&response=csv"
+  # 上市月營收（僅回傳「目前最新一期」，非歷史區間查詢，詳見 fundamentals.py 註解）
+  monthly_revenue: "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
+  # 上市公司綜合損益表-一般業（僅回傳「目前最新一期」，用於營收/毛利率；EPS/稅後淨利改用下面mopsfin歷史序列源）
+  income_statement: "https://openapi.twse.com.tw/v1/opendata/t187ap06_L_ci"
+  # 上市公司基本資料（含產業別代碼），全部上市公司一次回傳
+  company_profile: "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
+  # 月營收歷史彙總檔（依「民國年_月(不補0)」查詢，涵蓋當月全部上市公司，可回補任意月份）
+  monthly_revenue_history: "https://mopsov.twse.com.tw/nas/t21/sii/t21sc03_{roc_year}_{month}_0.html"
+  # 上市公司每日重大訊息：只回傳「當天」全部上市公司公告，無歷史查詢，需每日執行累積
+  material_announcements: "https://openapi.twse.com.tw/v1/opendata/t187ap04_L"
+
+# MOPS 法人說明會一覽表：兩段式簽章網址(先跟 redirectToOld 換取一次性網址，再GET該網址取內容)
+investor_conference:
+  redirect_url: "https://mops.twse.com.tw/mops/api/redirectToOld"
+  api_name: "ajax_t100sb02_1"
+  file_download_url: "https://mopsov.twse.com.tw/server-java/FileDownLoad"
+
+# 公開資訊觀測站「財務比較e點通」：可用單一請求取回某公司從2013Q1至今「單季」(非累計)數字，
+# 且已內建年增率計算，比 openapi 的「僅最新一期累計數」更適合拿來畫季度歷史走勢。
+mopsfin:
+  compare_data_url: "https://mopsfin.twse.com.tw/compare/data"
+  metrics:
+    eps: { compare_item: "EPS", unit: "元", label: "EPS" }
+    eps_yoy: { compare_item: "EPSYOY", unit: "%", label: "EPS年增率" }
+    net_income: { compare_item: "NetProfit", unit: "新台幣千元", label: "稅後淨利" }
+    net_income_yoy: { compare_item: "NetProfitYOY", unit: "%", label: "稅後淨利年增率" }
+# 註：台灣50成分股清單實際由「臺灣指數公司」編製公告，經查目前無穩定、可程式化解析的
+# 免費結構化端點（官網為前端渲染頁面），因此改為透過 Dashboard「人工輸入」頁登記，
+# 未串接自動抓取。
+
+# --- TAIFEX 端點（皆為 POST 表單，回應為 Big5 編碼） ---
+taifex:
+  # 三大法人-依日期查詢（單日、回傳全部商品的 HTML 表格；POST 參數：queryDate, commodityId='', queryType='1'）
+  futures_institutional: "https://www.taifex.com.tw/cht/3/futContractsDate"
+  # 選擇權每日交易行情下載（支援日期區間但以不超過一個月為原則；POST 參數：down_type=1, commodity_id, queryStartDate, queryEndDate）
+  options_daily: "https://www.taifex.com.tw/cht/3/optDataDown"
+  # 期貨每日交易行情下載（同上，支援日期區間；commodity_id=TX 為台指期）
+  futures_daily: "https://www.taifex.com.tw/cht/3/futDataDown"
+
+# 註：iShares 官網有 EWT/AAXJ 的 Fund Flow CSV 可下載，但下載連結格式常變動且需瀏覽器 headers，
+# 穩定性差，目前版本未串接。EPFR 資金流向近似改用 EWT/AAXJ 的「成交量」作為粗略代理
+# （量能異常放大常伴隨外資申購/贖回，雖不如官方 fund flow 精確，但免費且穩定可得）。
+
+# 電子業龍頭觀察名單（月營收/財報 collector 用）
+watchlist_electronics:
+  - { code: "2330", name: "台積電" }
+  - { code: "2317", name: "鴻海" }
+  - { code: "2454", name: "聯發科" }
+  - { code: "3008", name: "大立光" }
+  - { code: "2308", name: "台達電" }
+  - { code: "3711", name: "日月光投控" }
+  - { code: "2379", name: "瑞昱" }
+
+request:
+  timeout_seconds: 20
+  retry_times: 3
+  retry_backoff_seconds: 2
+  # TWSE/TAIFEX 對高頻請求會回傳 428/429 限流，此值刻意保守，回補全年資料時較耐用。
+  rate_limit_seconds: 2.5
