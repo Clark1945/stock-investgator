@@ -128,9 +128,16 @@ def _render_table(df: pd.DataFrame, int_cols: list[str], pct_cols: list[str] | N
     )
 
 
+REVENUE_POSITION_THRESHOLD = 80.0
+
+
 def _screen_consecutive_positive_revenue_months(n: int) -> None:
-    """篩選最近n個月「月營收月增率」皆為正值的股票，n=2、3...共用同一套邏輯。"""
-    st.caption(f"篩選條件：最近{n}個月的「月營收月增率」皆為正值（代表營收連續{n}個月比上一個月成長）。")
+    """篩選最近n個月「月營收月增率」皆為正值，且近12個月營收位置(近似創高)達門檻的股票，n=2、3...共用同一套邏輯。"""
+    st.caption(
+        f"篩選條件：①最近{n}個月的「月營收月增率」皆為正值（代表營收連續{n}個月比上一個月成長）；"
+        f"②近12個月營收位置% = (當月營收-近12月最低)/(近12月最高-近12月最低)×100 ≥ {REVENUE_POSITION_THRESHOLD:.0f}%"
+        "（排除只是從歷史低基期回升、但尚未真正創高的股票）。"
+    )
 
     mom_rows = query_timeseries_like("monthly_revenue_mom_%")
     if not mom_rows:
@@ -166,6 +173,17 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
     mom_col_names = [f"月增幅 {m}(%)" for m in month_labels]
     qualifying_codes = [c for c in qualifying.index if c in pivot_rev.index]
 
+    # 近12個月營收位置% = (當月營收-近12月最低)/(近12月最高-近12月最低)×100，
+    # 用來排除「歷史基期太低、只是回正而非真正創高」的假訊號（Stochastic %K 概念）。
+    window_start = (pd.to_datetime(target_months[-1]) - pd.DateOffset(months=11)).strftime("%Y-%m-%d")
+    rev12_rows = query_timeseries_like("monthly_revenue_%", start_date=window_start, end_date=target_months[-1])
+    df_rev12 = pd.DataFrame([dict(r) for r in rev12_rows])
+    df_rev12 = df_rev12[~df_rev12["indicator_code"].str.contains("_mom_|_yoy_")]
+    df_rev12["stock_code"] = df_rev12["indicator_code"].str.replace("monthly_revenue_", "", regex=False)
+    pivot_rev12 = df_rev12.pivot(index="stock_code", columns="date", values="value")
+    rev12_min = pivot_rev12.min(axis=1)
+    rev12_max = pivot_rev12.max(axis=1)
+
     # 抓最近10個日曆天的OHLC(至少涵蓋2個交易日)，用來算「今日 vs 前一交易日」的漲跌幅。
     lookback_date = (datetime.today() - timedelta(days=10)).strftime("%Y-%m-%d")
     recent_rows = query_recent_stock_ohlc_bulk(qualifying_codes, lookback_date)
@@ -184,6 +202,16 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
         revs = pivot_rev.loc[code, target_months]
         if revs.isna().any():
             continue
+
+        r_min = rev12_min.get(code)
+        r_max = rev12_max.get(code)
+        if r_min is None or r_max is None or r_max <= r_min:
+            continue
+        current_rev = revs.iloc[-1]
+        position_pct = (current_rev - r_min) / (r_max - r_min) * 100
+        if position_pct < REVENUE_POSITION_THRESHOLD:
+            continue
+
         moms = qualifying.loc[code, target_months]
         latest = latest_map.get(code)
         prev = prev_map.get(code)
@@ -204,6 +232,7 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
             "股價漲跌(%)": price_chg_pct,
             "當日交易量(張)": int(volume / 1000) if volume is not None else None,
             "交易量漲跌(%)": volume_chg_pct,
+            "近12月營收位置%": position_pct,
         }
         for i in range(n):
             row[rev_col_names[i]] = int(revs.iloc[i])
@@ -211,7 +240,7 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
         result_rows.append(row)
 
     if not result_rows:
-        st.info(f"目前沒有符合條件、且{n}個月營收金額都齊全的股票。")
+        st.info(f"目前沒有符合條件（含近12個月營收位置%≥{REVENUE_POSITION_THRESHOLD:.0f}%）、且{n}個月營收金額都齊全的股票。")
         return
 
     result_df = pd.DataFrame(result_rows)
@@ -230,7 +259,7 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
     _render_table(
         page_df,
         int_cols=["排名", "當日交易量(張)"] + rev_col_names,
-        pct_cols=["股價漲跌(%)", "交易量漲跌(%)"] + mom_col_names,
+        pct_cols=["股價漲跌(%)", "交易量漲跌(%)", "近12月營收位置%"] + mom_col_names,
         price_cols=["當日股價"],
     )
     _render_pagination(result_df, key=page_key)

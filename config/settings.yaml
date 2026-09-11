@@ -76,6 +76,8 @@ mopsfin:
     eps_yoy: { compare_item: "EPSYOY", unit: "%", label: "EPS年增率" }
     net_income: { compare_item: "NetProfit", unit: "新台幣千元", label: "稅後淨利" }
     net_income_yoy: { compare_item: "NetProfitYOY", unit: "%", label: "稅後淨利年增率" }
+    gross_margin: { compare_item: "GrossMargin", unit: "%", label: "毛利率" }
+    operating_margin: { compare_item: "OperatingMargin", unit: "%", label: "營業利益率" }
 # 註：台灣50成分股清單實際由「臺灣指數公司」編製公告，經查目前無穩定、可程式化解析的
 # 免費結構化端點（官網為前端渲染頁面），因此改為透過 Dashboard「人工輸入」頁登記，
 # 未串接自動抓取。

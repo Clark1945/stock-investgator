@@ -246,12 +246,19 @@ st.caption(
 )
 
 st.divider()
-st.header(f"{picked} 季報（稅後淨利 / EPS）")
-q_codes = [f"net_income_{code}", f"net_income_yoy_{code}", f"eps_{code}", f"eps_yoy_{code}"]
+st.header(f"{picked} 季報（毛利率 / 營業利益率 / 稅後淨利 / EPS）")
+q_codes = [
+    f"gross_margin_{code}",
+    f"operating_margin_{code}",
+    f"net_income_{code}",
+    f"net_income_yoy_{code}",
+    f"eps_{code}",
+    f"eps_yoy_{code}",
+]
 df_q = load_df(q_codes, start_date, end_date)
 
 if df_q.empty:
-    st.info("此個股目前尚無季報資料——EPS/稅後淨利歷史目前僅涵蓋電子業觀察清單7家公司，尚未擴大到全市場。")
+    st.info("此個股目前尚無季報資料——季報歷史目前僅涵蓋電子業觀察清單7家公司+2026年全市場毛利率/營業利益率，尚未完全擴大到全市場。")
 else:
     def _quarter_label(d) -> str:
         q = (d.month - 1) // 3 + 1
@@ -259,6 +266,8 @@ else:
 
     table_q = pd.DataFrame(
         {
+            "毛利率(%)": df_q[df_q["indicator_code"] == f"gross_margin_{code}"].set_index("date")["value"],
+            "營業利益率(%)": df_q[df_q["indicator_code"] == f"operating_margin_{code}"].set_index("date")["value"],
             "稅後淨利(千元)": df_q[df_q["indicator_code"] == f"net_income_{code}"].set_index("date")["value"],
             "稅後淨利年增率(%)": df_q[df_q["indicator_code"] == f"net_income_yoy_{code}"].set_index("date")["value"],
             "EPS(元)": df_q[df_q["indicator_code"] == f"eps_{code}"].set_index("date")["value"],
@@ -270,6 +279,8 @@ else:
     table_q = table_q.sort_index(ascending=False)
 
     fmt_q = {
+        "毛利率(%)": "{:.2f}",
+        "營業利益率(%)": "{:.2f}",
         "稅後淨利(千元)": "{:,.0f}",
         "稅後淨利年增率(%)": "{:+.2f}",
         "EPS(元)": "{:.2f}",
@@ -278,8 +289,8 @@ else:
     st.dataframe(table_q.style.format(fmt_q, na_rep="—"), use_container_width=True)
 
 st.caption(
-    "稅後淨利/EPS來源為 MOPS「財務比較e點通」，已回補至 2013Q1 至今的單季數字與官方年增率，"
-    "並會隨每日執行自動更新最新一季；本益比因需另外抓取股價並自行換算，暫未提供。"
+    "季報資料來源為 MOPS「財務比較e點通」，已回補至 2013Q1 至今的單季數字（毛利率/營業利益率目前僅回補2026年，"
+    "其餘年度可再擴大回補），並會隨每日執行自動更新最新一季；本益比因需另外抓取股價並自行換算，暫未提供。"
 )
 
 st.divider()

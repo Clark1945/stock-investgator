@@ -5,8 +5,11 @@
   依「民國年_月」逐月查詢即可取得任意歷史月份的全上市公司營收與年增率，可完整回補。
 - EPS / 稅後淨利：改用「財務比較e點通」(mopsfin.twse.com.tw/compare/data)，單一請求即可取回
   該公司從 2013Q1 至今「單季」數字（非累計數）與官方年增率，同樣可完整回補，不受限於「僅最新一期」。
-- 季營收 / 毛利率：仍用 TWSE OpenAPI 損益表(t187ap06_L_ci)，該端點只回傳「目前最新公告一期」的
+- 季營收：仍用 TWSE OpenAPI 損益表(t187ap06_L_ci)，該端點只回傳「目前最新公告一期」的
   全市場快照，無法指定歷史區間查詢，歷史序列只能隨每日/每季執行逐步累積。
+- 毛利率 / 營業利益率：改用「財務比較e點通」(compareItem=GrossMargin/OperatingMargin)，
+  與EPS/稅後淨利同一套機制，可回補2013Q1至今單季數字，不再用openapi自算(已從
+  collect_income_statement移除，避免同一指標code出現兩種來源互相覆蓋)。
 """
 
 from datetime import datetime
@@ -209,7 +212,7 @@ def _quarter_to_date(q_label: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 季營收 / 毛利率（TWSE OpenAPI，僅最新一期快照）
+# 季營收（TWSE OpenAPI，僅最新一期快照）
 # ---------------------------------------------------------------------------
 
 
@@ -237,15 +240,8 @@ def collect_income_statement(_start_date: str, _end_date: str) -> int:
         name = item.get("公司名稱", code)
 
         revenue = _to_float(item.get("營業收入"))
-        gross_profit = _to_float(item.get("營業毛利（毛損）") or item.get("營業毛利"))
-        gross_margin = None
-        if revenue and gross_profit is not None and revenue != 0:
-            gross_margin = gross_profit / revenue * 100
-
         if revenue is not None:
             rows.append(_row(report_date, f"revenue_{code}", f"{name}({code}) 營業收入", revenue, "新台幣千元", "TWSE t187ap06_L_ci"))
-        if gross_margin is not None:
-            rows.append(_row(report_date, f"gross_margin_{code}", f"{name}({code}) 毛利率", gross_margin, "%", "TWSE t187ap06_L_ci"))
 
     n = upsert_timeseries(rows)
     logger.info(f"collect_income_statement 寫入 {n} 筆")
