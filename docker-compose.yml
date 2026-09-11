@@ -1,0 +1,31 @@
+services:
+  dashboard:
+    build: .
+    container_name: stock-invensgator-dashboard
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    restart: unless-stopped
+    labels:
+      ofelia.enabled: "true"
+      # 對應原本 Windows工作排程器 StockInvensgator_DailyUpdate 的兩個觸發時間(17:30、06:30)，
+      # 直接在已經在跑的 dashboard container 裡執行 run_daily，不用另外建立/啟動新 container。
+      ofelia.job-exec.daily-update-evening.schedule: "0 30 17 * * *"
+      ofelia.job-exec.daily-update-evening.command: "python -m src.run_daily"
+      ofelia.job-exec.daily-update-morning.schedule: "0 30 6 * * *"
+      ofelia.job-exec.daily-update-morning.command: "python -m src.run_daily"
+
+  scheduler:
+    image: mcuadros/ofelia:latest
+    container_name: stock-invensgator-scheduler
+    command: daemon --docker
+    depends_on:
+      - dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - TZ=Asia/Taipei
+    restart: unless-stopped

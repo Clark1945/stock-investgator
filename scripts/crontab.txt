@@ -1,0 +1,17 @@
+# 台股外資動向儀表板 - Linux cron 設定
+# 對應原本 Windows工作排程器的 StockInvensgator_DailyUpdate 任務(17:30、06:30 各跑一次 run_daily)。
+#
+# 安裝方式：
+#   1. 把下面的 /path/to/stock-invensgator 換成實際部署路徑
+#   2. chmod +x scripts/run_daily_cron.sh
+#   3. crontab -e，把下面兩行(不含本說明區塊)貼進去
+#      （若要保留機器上其他既有的 crontab 內容，用 crontab -e 編輯、不要用 crontab crontab.txt 整份覆蓋）
+#
+# 時區注意：CRON_TZ 只有 cronie/Vixie cron 較新版本支援每行指定時區；若你的 server 版本不支援，
+# 拿掉 CRON_TZ 那段，改成用系統時區(需先確認 `timedatectl` 顯示的System Time為Asia/Taipei，
+# 或在最上面加一行 `TZ=Asia/Taipei` 讓整份 crontab 都用台北時間解讀)。
+
+CRON_TZ=Asia/Taipei
+30 17 * * * /path/to/stock-invensgator/scripts/run_daily_cron.sh
+CRON_TZ=Asia/Taipei
+30 6 * * * /path/to/stock-invensgator/scripts/run_daily_cron.sh

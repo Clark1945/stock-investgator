@@ -1,0 +1,10 @@
+.git/
+__pycache__/
+**/__pycache__/
+*.pyc
+.venv/
+venv/
+data/*.db
+logs/*.log
+config/.env
+.claude/
