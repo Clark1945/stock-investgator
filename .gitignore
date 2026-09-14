@@ -6,3 +6,4 @@ config/.env
 .venv/
 venv/
 .claude/scheduled_tasks.lock
+.idea/

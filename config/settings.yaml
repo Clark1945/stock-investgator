@@ -60,6 +60,9 @@ twse:
   material_announcements: "https://openapi.twse.com.tw/v1/opendata/t187ap04_L"
   # 三大法人買賣超日報（個股層級，依日期，全市場單一檔案，可回補歷史日期）
   institutional_flow_daily: "https://www.twse.com.tw/rwd/zh/fund/T86?date={date}&selectType=ALL&response=json"
+  # 外資及陸資持股比率（個股層級，依日期，全市場單一檔案，可回補歷史日期；跟上面T86是
+  # 「流量(當日買賣超)」不同，這份是「存量(目前持股佔已發行股數%)」）
+  foreign_holding_ratio: "https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS?date={date}&selectType=ALLBUT0999&response=json"
 
 # MOPS 法人說明會一覽表：兩段式簽章網址(先跟 redirectToOld 換取一次性網址，再GET該網址取內容)
 investor_conference:

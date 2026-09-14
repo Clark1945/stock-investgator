@@ -9,7 +9,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from dashboard.common import date_range_sidebar, load_df
+from dashboard.common import date_range_sidebar, line_chart, load_df
 from src.db.repo import (
     query_company_profiles,
     query_industry_list,
@@ -83,7 +83,7 @@ def _latest_and_change(indicator_code: str) -> tuple[float | None, float | None]
 
 
 st.subheader(f"{picked} 總覽")
-col1, col2, col3, col4, col5 = st.columns(5)
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 
 ohlc_rows_all = query_stock_ohlc(code)
 if ohlc_rows_all:
@@ -129,7 +129,16 @@ else:
 eps = _latest_value(f"eps_{code}")
 col4.metric("EPS(元)", f"{eps:,.2f}" if eps is not None else "無資料")
 
-st.caption("總覽卡片一律顯示資料庫中最新一筆數值，不受下方日期區間篩選影響；月增率/季增率為與前一期比較的變動百分比。")
+holding_rows = query_timeseries([f"foreign_holding_ratio_{code}"])
+if holding_rows:
+    latest_holding = holding_rows[-1]["value"]
+    prev_holding = holding_rows[-2]["value"] if len(holding_rows) > 1 else None
+    holding_delta = f"{latest_holding - prev_holding:+.2f}" if prev_holding is not None else None
+    col6.metric("外資持股比率(%)", f"{latest_holding:,.2f}", holding_delta)
+else:
+    col6.metric("外資持股比率(%)", "無資料")
+
+st.caption("總覽卡片一律顯示資料庫中最新一筆數值，不受下方日期區間篩選影響；月增率/季增率為與前一期比較的變動百分比，外資持股比率的增減為與前一日的百分點差。")
 
 st.divider()
 st.header(f"{picked} 日K線")
@@ -216,6 +225,17 @@ else:
 st.caption(
     "三大法人買賣超資料來源為 TWSE 三大法人買賣超日報，已涵蓋全部上市普通股、回補至 2025-01，"
     "並會隨每日執行自動更新；正值代表買超、負值代表賣超，單位為張（原始股數/1000）。"
+)
+
+st.divider()
+st.header(f"{picked} 外資及陸資持股比率")
+holding_code = f"foreign_holding_ratio_{code}"
+df_holding = load_df([holding_code], start_date, end_date)
+line_chart(df_holding, holding_code, "外資及陸資持股比率(%)")
+st.caption(
+    "外資持股比率資料來源為 TWSE 外資及陸資持股比率統計，跟上面的「三大法人買賣超」不同——"
+    "買賣超是「當日流量」，這裡是「目前存量」(外資合計持股占已發行股數的百分比)，"
+    "已涵蓋全部上市普通股，並會隨每日執行自動更新。"
 )
 
 st.divider()

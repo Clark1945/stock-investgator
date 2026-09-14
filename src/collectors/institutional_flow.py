@@ -1,8 +1,12 @@
-"""三大法人（外資/投信/自營商）個股買賣超日報，涵蓋全部上市普通股。
+"""三大法人（外資/投信/自營商）個股買賣超日報 + 外資及陸資持股比率，涵蓋全部上市普通股。
 
-資料源為 TWSE 三大法人買賣超日報(T86)，全市場單一JSON檔案，依日期查詢即可
-回補任意歷史交易日，不像法說會/季報EPS那樣需要逐股個別請求，回補成本低。
-範圍限定跟月營收/個股分析頁一致的普通股清單(~992家)，排除ETF、權證等。
+資料源分別為 TWSE 三大法人買賣超日報(T86)、外資及陸資持股比率(MI_QFIIS)，皆為
+全市場單一JSON檔案，依日期查詢即可回補任意歷史交易日，不像法說會/季報EPS那樣需要
+逐股個別請求，回補成本低。範圍限定跟月營收/個股分析頁一致的普通股清單(~992家)，
+排除ETF、權證等。
+
+兩者代表的意義不同：T86是「流量」(當日買賣超股數)，MI_QFIIS是「存量」(外資目前持股
+佔該公司已發行股數的百分比)。
 """
 
 from datetime import datetime
@@ -39,7 +43,7 @@ def _common_stock_codes() -> set[str]:
     return result
 
 
-def _row(date_str: str, code: str, label: str, value: float, unit: str) -> dict:
+def _row(date_str: str, code: str, label: str, value: float, unit: str, source: str = "TWSE T86") -> dict:
     return {
         "date": date_str,
         "indicator_code": code,
@@ -48,7 +52,7 @@ def _row(date_str: str, code: str, label: str, value: float, unit: str) -> dict:
         "value": value,
         "unit": unit,
         "is_proxy": False,
-        "source": "TWSE T86",
+        "source": source,
     }
 
 
@@ -106,13 +110,61 @@ def collect_institutional_flow_daily(start_date: str, end_date: str) -> int:
     return n
 
 
+IDX_HOLDING_RATIO = 7  # 全體外資及陸資持股比率(%)
+
+
+def collect_foreign_holding_ratio_daily(start_date: str, end_date: str) -> int:
+    url_tpl = SETTINGS["twse"]["foreign_holding_ratio"]
+    valid_codes = _common_stock_codes()
+    if not valid_codes:
+        logger.warning("目前資料庫尚無 monthly_revenue_* 清單，無法過濾普通股範圍，略過")
+        return 0
+
+    rows = []
+    for d in trading_date_range(start_date, end_date):
+        date_str = d.strftime("%Y%m%d")
+        url = url_tpl.format(date=date_str)
+        resp = http_get(url, logger=logger)
+        if resp is None:
+            continue
+        try:
+            data = resp.json()
+        except Exception as e:
+            logger.warning(f"外資持股比率解析失敗 {date_str}: {e}")
+            continue
+
+        items = data.get("data") or []
+        if not items:
+            continue
+
+        date_iso = d.strftime("%Y-%m-%d")
+        found = 0
+        for item in items:
+            code = str(item[0]).strip()
+            if code not in valid_codes:
+                continue
+            name = str(item[1]).strip()
+
+            ratio = _to_num(item[IDX_HOLDING_RATIO])
+            if ratio is not None:
+                rows.append(_row(date_iso, f"foreign_holding_ratio_{code}", f"{name}({code}) 外資及陸資持股比率", ratio, "%", source="TWSE MI_QFIIS"))
+                found += 1
+        if found:
+            logger.info(f"外資持股比率 {date_iso} 取得 {found} 檔普通股")
+
+    n = upsert_timeseries(rows)
+    logger.info(f"collect_foreign_holding_ratio_daily 寫入 {n} 筆")
+    return n
+
+
 def run(start_date: str, end_date: str) -> None:
-    try:
-        n = collect_institutional_flow_daily(start_date, end_date)
-        log_run("collect_institutional_flow_daily", "ok", f"{n} rows")
-    except Exception as e:
-        logger.exception("collect_institutional_flow_daily 執行失敗")
-        log_run("collect_institutional_flow_daily", "error", str(e))
+    for fn in (collect_institutional_flow_daily, collect_foreign_holding_ratio_daily):
+        try:
+            n = fn(start_date, end_date)
+            log_run(fn.__name__, "ok", f"{n} rows")
+        except Exception as e:
+            logger.exception(f"{fn.__name__} 執行失敗")
+            log_run(fn.__name__, "error", str(e))
 
 
 if __name__ == "__main__":
