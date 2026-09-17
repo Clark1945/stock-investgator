@@ -166,6 +166,22 @@ def query_recent_stock_ohlc_bulk(stock_codes: list[str], start_date: str):
         return c.execute(sql, stock_codes + [start_date]).fetchall()
 
 
+def query_stock_ohlc_bulk_range(stock_codes: list[str], start_date: str, end_date: str):
+    """回傳多檔股票在 [start_date, end_date] 區間內的全部OHLC row(依代號、日期排序)，
+    供批次計算「與N天前某個時間點比較」等場景使用(例如股價年增幅)，避免逐檔股票各自查詢。
+    """
+    if not stock_codes:
+        return []
+    placeholders = ",".join("?" for _ in stock_codes)
+    sql = f"""
+        SELECT * FROM stock_ohlc
+        WHERE stock_code IN ({placeholders}) AND date >= ? AND date <= ?
+        ORDER BY stock_code ASC, date ASC
+    """
+    with get_connection() as c:
+        return c.execute(sql, stock_codes + [start_date, end_date]).fetchall()
+
+
 def query_stock_ohlc(stock_code: str, start_date: str | None = None, end_date: str | None = None):
     sql = "SELECT * FROM stock_ohlc WHERE stock_code=?"
     params: list = [stock_code]

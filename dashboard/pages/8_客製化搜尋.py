@@ -9,7 +9,12 @@ if str(ROOT_DIR) not in sys.path:
 import pandas as pd
 import streamlit as st
 
-from src.db.repo import query_company_profiles, query_recent_stock_ohlc_bulk, query_timeseries_like
+from src.db.repo import (
+    query_company_profiles,
+    query_recent_stock_ohlc_bulk,
+    query_stock_ohlc_bulk_range,
+    query_timeseries_like,
+)
 
 st.set_page_config(page_title="客製化搜尋", layout="wide")
 st.title("客製化搜尋")
@@ -197,6 +202,17 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
             if len(g) >= 2:
                 prev_map[code] = g.iloc[-2].to_dict()
 
+    # 抓「一年前」附近(往前抓14天當緩衝，避開週末/假日沒有交易日的情況)最後一筆交易日的收盤價，
+    # 用來算股票年增幅：(今日收盤-一年前收盤)/一年前收盤×100。
+    year_ago_end = (datetime.today() - timedelta(days=365)).strftime("%Y-%m-%d")
+    year_ago_start = (datetime.today() - timedelta(days=379)).strftime("%Y-%m-%d")
+    year_ago_rows = query_stock_ohlc_bulk_range(qualifying_codes, year_ago_start, year_ago_end)
+    year_ago_map: dict[str, dict] = {}
+    if year_ago_rows:
+        df_year_ago = pd.DataFrame([dict(r) for r in year_ago_rows])
+        for code, g in df_year_ago.groupby("stock_code"):
+            year_ago_map[code] = g.sort_values("date").iloc[-1].to_dict()
+
     result_rows = []
     for code in qualifying_codes:
         revs = pivot_rev.loc[code, target_months]
@@ -225,11 +241,17 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
         if prev and volume is not None and prev.get("volume"):
             volume_chg_pct = (volume - prev["volume"]) / prev["volume"] * 100
 
+        year_ago = year_ago_map.get(code)
+        price_yoy_pct = None
+        if year_ago and close_price is not None and year_ago.get("close"):
+            price_yoy_pct = (close_price - year_ago["close"]) / year_ago["close"] * 100
+
         row = {
             "股票": _stock_link(code),
             "產業別": industry_map.get(code) or "—",
             "當日股價": close_price,
             "股價漲跌(%)": price_chg_pct,
+            "股票年增幅(%)": price_yoy_pct,
             "當日交易量(張)": int(volume / 1000) if volume is not None else None,
             "交易量漲跌(%)": volume_chg_pct,
             "近12月營收位置%": position_pct,
@@ -259,7 +281,7 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
     _render_table(
         page_df,
         int_cols=["排名", "當日交易量(張)"] + rev_col_names,
-        pct_cols=["股價漲跌(%)", "交易量漲跌(%)", "近12月營收位置%"] + mom_col_names,
+        pct_cols=["股價漲跌(%)", "股票年增幅(%)", "交易量漲跌(%)", "近12月營收位置%"] + mom_col_names,
         price_cols=["當日股價"],
     )
     _render_pagination(result_df, key=page_key)
