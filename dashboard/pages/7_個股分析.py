@@ -67,6 +67,11 @@ def _latest_value(indicator_code: str) -> float | None:
     return rows[-1]["value"] if rows else None
 
 
+def _quarter_label(d) -> str:
+    q = (d.month - 1) // 3 + 1
+    return f"{d.year}Q{q}"
+
+
 def _latest_and_change(indicator_code: str) -> tuple[float | None, float | None]:
     """回傳 (最新值, 與上一筆自行計算的變動百分比)，資料不足時對應位置回傳 None。
     僅適用於「本身沒有官方增減率欄位」的指標(如季稅後淨利)；月營收月增率請直接用
@@ -280,10 +285,6 @@ df_q = load_df(q_codes, start_date, end_date)
 if df_q.empty:
     st.info("此個股目前尚無季報資料——季報歷史目前僅涵蓋電子業觀察清單7家公司+2026年全市場毛利率/營業利益率，尚未完全擴大到全市場。")
 else:
-    def _quarter_label(d) -> str:
-        q = (d.month - 1) // 3 + 1
-        return f"{d.year}Q{q}"
-
     table_q = pd.DataFrame(
         {
             "毛利率(%)": df_q[df_q["indicator_code"] == f"gross_margin_{code}"].set_index("date")["value"],
@@ -311,6 +312,45 @@ else:
 st.caption(
     "季報資料來源為 MOPS「財務比較e點通」，已回補至 2013Q1 至今的單季數字（毛利率/營業利益率目前僅回補2026年，"
     "其餘年度可再擴大回補），並會隨每日執行自動更新最新一季；本益比因需另外抓取股價並自行換算，暫未提供。"
+)
+
+st.subheader(f"{picked} 損益表")
+is_codes = [f"revenue_{code}", f"gross_profit_{code}", f"operating_income_{code}", f"net_income_{code}", f"eps_{code}"]
+df_is = load_df(is_codes, start_date, end_date)
+
+if df_is.empty:
+    st.info("此個股目前尚無損益表金額資料——目前僅涵蓋電子業觀察清單7家公司（完整2013Q1至今）+2025年起全市場資料。")
+else:
+    rev_s = df_is[df_is["indicator_code"] == f"revenue_{code}"].set_index("date")["value"]
+    gp_s = df_is[df_is["indicator_code"] == f"gross_profit_{code}"].set_index("date")["value"]
+    table_is = pd.DataFrame(
+        {
+            "營業收入(千元)": rev_s,
+            "營業成本(千元)": rev_s - gp_s,
+            "營業毛利(千元)": gp_s,
+            "營業利益(千元)": df_is[df_is["indicator_code"] == f"operating_income_{code}"].set_index("date")["value"],
+            "稅後淨利(千元)": df_is[df_is["indicator_code"] == f"net_income_{code}"].set_index("date")["value"],
+            "EPS(元)": df_is[df_is["indicator_code"] == f"eps_{code}"].set_index("date")["value"],
+        }
+    )
+    table_is.index = [_quarter_label(d) for d in table_is.index]
+    table_is.index.name = "季別"
+    table_is = table_is.sort_index(ascending=False)
+
+    fmt_is = {
+        "營業收入(千元)": "{:,.0f}",
+        "營業成本(千元)": "{:,.0f}",
+        "營業毛利(千元)": "{:,.0f}",
+        "營業利益(千元)": "{:,.0f}",
+        "稅後淨利(千元)": "{:,.0f}",
+        "EPS(元)": "{:.2f}",
+    }
+    st.dataframe(table_is.style.format(fmt_is, na_rep="—"), use_container_width=True)
+
+st.caption(
+    "損益表金額資料來源同上為 MOPS「財務比較e點通」，營業收入/營業毛利/營業利益已回補至2025年起"
+    "（電子業觀察清單7家有完整2013Q1至今歷史），營業成本為「營業收入-營業毛利」反推（同一份官方數字相減，非估算）；"
+    "業外收入、稅前淨利、營業費用因目前無現成的單季歷史資料源，暫未提供。"
 )
 
 st.divider()

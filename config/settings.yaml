@@ -50,8 +50,6 @@ twse:
   taiex_index: "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX?date={date}&type=IND&response=csv"
   # 上市月營收（僅回傳「目前最新一期」，非歷史區間查詢，詳見 fundamentals.py 註解）
   monthly_revenue: "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
-  # 上市公司綜合損益表-一般業（僅回傳「目前最新一期」，用於營收/毛利率；EPS/稅後淨利改用下面mopsfin歷史序列源）
-  income_statement: "https://openapi.twse.com.tw/v1/opendata/t187ap06_L_ci"
   # 上市公司基本資料（含產業別代碼），全部上市公司一次回傳
   company_profile: "https://openapi.twse.com.tw/v1/opendata/t187ap03_L"
   # 月營收歷史彙總檔（依「民國年_月(不補0)」查詢，涵蓋當月全部上市公司，可回補任意月份）
@@ -81,6 +79,9 @@ mopsfin:
     net_income_yoy: { compare_item: "NetProfitYOY", unit: "%", label: "稅後淨利年增率" }
     gross_margin: { compare_item: "GrossMargin", unit: "%", label: "毛利率" }
     operating_margin: { compare_item: "OperatingMargin", unit: "%", label: "營業利益率" }
+    revenue: { compare_item: "Revenue", unit: "新台幣千元", label: "營業收入" }
+    gross_profit: { compare_item: "GrossProfit", unit: "新台幣千元", label: "營業毛利" }
+    operating_income: { compare_item: "OperatingIncome", unit: "新台幣千元", label: "營業利益" }
 # 註：台灣50成分股清單實際由「臺灣指數公司」編製公告，經查目前無穩定、可程式化解析的
 # 免費結構化端點（官網為前端渲染頁面），因此改為透過 Dashboard「人工輸入」頁登記，
 # 未串接自動抓取。

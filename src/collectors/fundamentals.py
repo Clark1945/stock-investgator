@@ -3,13 +3,14 @@
 歷史資料來源說明：
 - 月營收：改用 MOPS 月營收歷史彙總檔（mopsov.twse.com.tw/nas/t21/sii/t21sc03_{民國年}_{月}_0.html），
   依「民國年_月」逐月查詢即可取得任意歷史月份的全上市公司營收與年增率，可完整回補。
-- EPS / 稅後淨利：改用「財務比較e點通」(mopsfin.twse.com.tw/compare/data)，單一請求即可取回
-  該公司從 2013Q1 至今「單季」數字（非累計數）與官方年增率，同樣可完整回補，不受限於「僅最新一期」。
-- 季營收：仍用 TWSE OpenAPI 損益表(t187ap06_L_ci)，該端點只回傳「目前最新公告一期」的
-  全市場快照，無法指定歷史區間查詢，歷史序列只能隨每日/每季執行逐步累積。
-- 毛利率 / 營業利益率：改用「財務比較e點通」(compareItem=GrossMargin/OperatingMargin)，
-  與EPS/稅後淨利同一套機制，可回補2013Q1至今單季數字，不再用openapi自算(已從
-  collect_income_statement移除，避免同一指標code出現兩種來源互相覆蓋)。
+- EPS / 稅後淨利 / 毛利率 / 營業利益率 / 營業收入 / 營業毛利 / 營業利益：皆改用「財務比較e點通」
+  (mopsfin.twse.com.tw/compare/data，compareItem分別為EPS/NetProfit/GrossMargin/OperatingMargin/
+  Revenue/GrossProfit/OperatingIncome)，單一請求即可取回該公司從2013Q1至今「單季」數字（非累計數），
+  同樣可完整回補，不受限於「僅最新一期」。原本用TWSE OpenAPI損益表(t187ap06_L_ci)自算/擷取這些
+  欄位的collect_income_statement已移除，避免同一指標code出現兩種來源互相覆蓋；營業成本則由
+  「營業收入-營業毛利」在Dashboard端反推顯示，不另外存成獨立指標。
+- 業外收入、稅前淨利、營業費用：mopsfin的損益趨勢工具沒有提供這幾項的單季歷史數字，
+  目前無現成資料源，暫不收集。
 """
 
 from datetime import datetime
@@ -29,10 +30,6 @@ MOPSFIN_HEADERS = {"Referer": "https://mopsfin.twse.com.tw/"}
 
 def _watchlist() -> list[dict]:
     return SETTINGS.get("watchlist_electronics", [])
-
-
-def _watchlist_codes() -> set[str]:
-    return {item["code"] for item in _watchlist()}
 
 
 # ---------------------------------------------------------------------------
@@ -130,9 +127,13 @@ def _all_company_list() -> list[tuple[str, str]]:
 
 
 def collect_quarterly_financials_bulk(
-    companies: list[tuple[str, str]], metric_keys: list[str], year_filter: str | None = None
+    companies: list[tuple[str, str]],
+    metric_keys: list[str],
+    year_filter: str | None = None,
+    min_date: str | None = None,
 ) -> int:
-    """全市場規模用的一般化版本：可指定公司清單、只抓哪幾個欄位、只保留哪一年。
+    """全市場規模用的一般化版本：可指定公司清單、只抓哪幾個欄位、只保留哪一年(year_filter)
+    或某日期起(min_date，格式YYYY-MM-DD，可涵蓋多年)。
     mopsfin 每次請求固定回傳該公司 2013Q1 至今全部歷史(不支援依日期區間查詢)，
     所以「縮短時間範圍」只會減少寫入資料庫的筆數，不會減少對外請求次數/耗時；
     這裡刻意不放進每日排程 run()，避免每天跑好幾十分鐘到數小時。
@@ -152,6 +153,8 @@ def collect_quarterly_financials_bulk(
             series = _mopsfin_compare(url, company_id, meta["compare_item"])
             for date_str, value in series.items():
                 if year_filter and not date_str.startswith(year_filter):
+                    continue
+                if min_date and date_str < min_date:
                     continue
                 rows.append(
                     _row(date_str, f"{key}_{code}", f"{name}({code}) {meta['label']}", value, meta["unit"], "MOPS財務比較e點通")
@@ -211,43 +214,6 @@ def _quarter_to_date(q_label: str) -> str:
     return f"{year}-{month:02d}-28"
 
 
-# ---------------------------------------------------------------------------
-# 季營收（TWSE OpenAPI，僅最新一期快照）
-# ---------------------------------------------------------------------------
-
-
-def collect_income_statement(_start_date: str, _end_date: str) -> int:
-    url = SETTINGS["twse"]["income_statement"]
-    resp = http_get(url, logger=logger)
-    if resp is None:
-        return 0
-    try:
-        data = resp.json()
-    except Exception as e:
-        logger.warning(f"損益表 JSON 解析失敗: {e}")
-        return 0
-
-    watchlist = _watchlist_codes()
-    rows = []
-    for item in data:
-        code = str(item.get("公司代號", "")).strip()
-        if code not in watchlist:
-            continue
-        period = str(item.get("出表日期") or item.get("資料年季") or "").strip()
-        report_date = _guess_report_date(item, period)
-        if report_date is None:
-            continue
-        name = item.get("公司名稱", code)
-
-        revenue = _to_float(item.get("營業收入"))
-        if revenue is not None:
-            rows.append(_row(report_date, f"revenue_{code}", f"{name}({code}) 營業收入", revenue, "新台幣千元", "TWSE t187ap06_L_ci"))
-
-    n = upsert_timeseries(rows)
-    logger.info(f"collect_income_statement 寫入 {n} 筆")
-    return n
-
-
 def _row(date_str: str, code: str, label: str, value: float, unit: str, source: str) -> dict:
     return {
         "date": date_str,
@@ -261,23 +227,6 @@ def _row(date_str: str, code: str, label: str, value: float, unit: str, source: 
     }
 
 
-def _guess_report_date(item: dict, period: str) -> str | None:
-    # 優先用資料年季（例如 "115年第2季"或 "11502"）換算成該季最後一天
-    year_field = item.get("年度") or item.get("資料年度")
-    season_field = item.get("季別") or item.get("資料季別")
-    try:
-        if year_field and season_field:
-            roc_year = int(str(year_field).strip())
-            season = int(str(season_field).strip())
-            year = roc_year + 1911
-            season_end_month = {1: 3, 2: 6, 3: 9, 4: 12}.get(season)
-            if season_end_month:
-                return f"{year}-{season_end_month:02d}-28"
-    except (ValueError, TypeError):
-        pass
-    return datetime.today().strftime("%Y-%m-%d") if period else None
-
-
 def _to_float(v) -> float | None:
     if v is None:
         return None
@@ -288,7 +237,7 @@ def _to_float(v) -> float | None:
 
 
 def run(start_date: str, end_date: str) -> None:
-    for fn in (collect_monthly_revenue_history, collect_quarterly_financials_history, collect_income_statement):
+    for fn in (collect_monthly_revenue_history, collect_quarterly_financials_history):
         try:
             n = fn(start_date, end_date)
             log_run(fn.__name__, "ok", f"{n} rows")
