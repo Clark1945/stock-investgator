@@ -163,7 +163,6 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
     pivot_rev = pivot_rev.reindex(columns=target_months)
 
     month_labels = [pd.to_datetime(m).strftime("%Y-%m") for m in target_months]
-    rev_col_names = [f"月營收 {m}(千元)" for m in month_labels]
     mom_col_names = [f"月增幅 {m}(%)" for m in month_labels]
     qualifying_codes = [c for c in qualifying.index if c in pivot_rev.index]
 
@@ -211,12 +210,12 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
             "產業別": industry_map.get(code) or "—",
             "當日股價": close_price,
             "股價漲跌(%)": price_chg_pct,
-            "營收年增幅(%)": rev_yoy_pct,
             "當日交易量(張)": int(volume / 1000) if volume is not None else None,
+            "當月營收(千元)": int(revs.iloc[-1]),
         }
         for i in range(n):
-            row[rev_col_names[i]] = int(revs.iloc[i])
             row[mom_col_names[i]] = float(moms.iloc[i])
+        row["營收年增幅(%)"] = rev_yoy_pct
         result_rows.append(row)
 
     if not result_rows:
@@ -238,7 +237,7 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
     page_df = _paginate(result_df, key=page_key)
     _render_table(
         page_df,
-        int_cols=["排名", "當日交易量(張)"] + rev_col_names,
+        int_cols=["排名", "當日交易量(張)", "當月營收(千元)"],
         pct_cols=["股價漲跌(%)", "營收年增幅(%)"] + mom_col_names,
         price_cols=["當日股價"],
     )
