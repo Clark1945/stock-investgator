@@ -17,6 +17,10 @@ services:
       ofelia.job-exec.daily-update-evening.command: "python -m src.run_daily"
       ofelia.job-exec.daily-update-morning.schedule: "0 30 6 * * *"
       ofelia.job-exec.daily-update-morning.command: "python -m src.run_daily"
+      # 對應 Windows工作排程器 StockInvensgator_WeeklyIncomeStatement，全市場季損益表金額
+      # 只有每季公告、不需要天天更新，用「每週一 08:00」重跑即可自動補上新公告的季度。
+      ofelia.job-exec.weekly-income-statement.schedule: "0 0 8 * * 1"
+      ofelia.job-exec.weekly-income-statement.command: "python scripts/backfill_income_statement_all.py"
 
   scheduler:
     image: mcuadros/ofelia:latest

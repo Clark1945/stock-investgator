@@ -5,7 +5,9 @@
 
 架構回顧：`docker compose up -d` 會啟動兩個 container——
 - `dashboard`：跑 Streamlit 網頁，對外開 8501 port
-- `scheduler`：`ofelia` 排程，每天 17:30、06:30(台北時間) 自動在 `dashboard` container 裡執行一次 `python -m src.run_daily`
+- `scheduler`：`ofelia` 排程，在 `dashboard` container 裡執行以下工作：
+  - 每天 17:30、06:30(台北時間)：`python -m src.run_daily`（日常資料更新）
+  - 每週一 08:00(台北時間)：`python scripts/backfill_income_statement_all.py`（全市場季損益表金額，季報只有每季公告，不需要天天更新）
 
 歷史資料庫(`data/invensgator.db`)是掛 volume 進 container 的，**不會**被打包進 git 或 Docker image，
 需要你手動搬過去一次（詳見步驟3）。
@@ -103,7 +105,7 @@ docker compose up -d --build
    docker compose logs scheduler
    ```
 
-   應該會看到 ofelia 印出 `job-exec` 相關訊息，列出 `daily-update-evening`／`daily-update-morning` 兩個job。
+   應該會看到 ofelia 印出 `job-exec` 相關訊息，列出 `daily-update-evening`／`daily-update-morning`／`weekly-income-statement` 三個job。
 
 3. 確認 dashboard container 本身正常：
 
