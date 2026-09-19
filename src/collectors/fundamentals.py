@@ -13,13 +13,20 @@
   目前無現成資料源，暫不收集。
 """
 
+import time
 from datetime import datetime
 from io import StringIO
 
 import pandas as pd
 
 from src.collectors.base import SETTINGS, get_logger, http_get, http_post
-from src.db.repo import log_run, query_company_profiles, query_indicator_codes_like, upsert_timeseries
+from src.db.repo import (
+    log_run,
+    query_company_profiles,
+    query_indicator_codes_like,
+    query_indicator_codes_since,
+    upsert_timeseries,
+)
 
 logger = get_logger("fundamentals")
 
@@ -131,12 +138,17 @@ def collect_quarterly_financials_bulk(
     metric_keys: list[str],
     year_filter: str | None = None,
     min_date: str | None = None,
+    skip_existing: bool = False,
 ) -> int:
     """全市場規模用的一般化版本：可指定公司清單、只抓哪幾個欄位、只保留哪一年(year_filter)
     或某日期起(min_date，格式YYYY-MM-DD，可涵蓋多年)。
     mopsfin 每次請求固定回傳該公司 2013Q1 至今全部歷史(不支援依日期區間查詢)，
     所以「縮短時間範圍」只會減少寫入資料庫的筆數，不會減少對外請求次數/耗時；
     這裡刻意不放進每日排程 run()，避免每天跑好幾十分鐘到數小時。
+
+    請求失敗(斷網/逾時等)的公司+指標會記錄下來，主迴圈跑完後冷卻60秒再重試一輪，
+    仍失敗的會列在log裡；skip_existing=True 則會略過「min_date之後已經有資料」的公司+指標，
+    用來在不重跑全部的情況下補洞(僅限補洞用，日常更新要保持False才會抓到新公告的季度)。
     """
     cfg = SETTINGS.get("mopsfin", {})
     url = cfg.get("compare_data_url")
@@ -146,29 +158,64 @@ def collect_quarterly_financials_bulk(
     total_written = 0
     CHECKPOINT_EVERY = 50
 
-    for i, (code, name) in enumerate(companies, 1):
-        company_id = f"{code} {name}"
+    existing: set[str] = set()
+    if skip_existing:
         for key in metric_keys:
-            meta = metrics[key]
-            series = _mopsfin_compare(url, company_id, meta["compare_item"])
-            for date_str, value in series.items():
-                if year_filter and not date_str.startswith(year_filter):
-                    continue
-                if min_date and date_str < min_date:
-                    continue
-                rows.append(
-                    _row(date_str, f"{key}_{code}", f"{name}({code}) {meta['label']}", value, meta["unit"], "MOPS財務比較e點通")
-                )
+            existing |= query_indicator_codes_since(f"{key}_%", min_date or "0000-01-01")
+
+    def _fetch(code: str, name: str, key: str) -> list[dict] | None:
+        meta = metrics[key]
+        series = _mopsfin_compare(url, f"{code} {name}", meta["compare_item"])
+        if series is None:
+            return None
+        out = []
+        for date_str, value in series.items():
+            if year_filter and not date_str.startswith(year_filter):
+                continue
+            if min_date and date_str < min_date:
+                continue
+            out.append(_row(date_str, f"{key}_{code}", f"{name}({code}) {meta['label']}", value, meta["unit"], "MOPS財務比較e點通"))
+        return out
+
+    failed: list[tuple[str, str, str]] = []
+    for i, (code, name) in enumerate(companies, 1):
+        for key in metric_keys:
+            if f"{key}_{code}" in existing:
+                continue
+            got = _fetch(code, name, key)
+            if got is None:
+                failed.append((code, name, key))
+            else:
+                rows.extend(got)
         if i % CHECKPOINT_EVERY == 0 or i == total:
             # 每 CHECKPOINT_EVERY 家就先寫入一次，避免長時間執行中途中斷時進度全部遺失。
             total_written += upsert_timeseries(rows)
             rows = []
             logger.info(f"季報全市場回補 {i}/{total} 家完成，累計寫入 {total_written} 筆")
 
+    if failed:
+        logger.warning(f"季報全市場回補有 {len(failed)} 筆請求失敗(多半是網路/DNS中斷)，冷卻60秒後重試一輪")
+        time.sleep(60)
+        still_failed = []
+        for code, name, key in failed:
+            got = _fetch(code, name, key)
+            if got is None:
+                still_failed.append((code, name, key))
+            else:
+                rows.extend(got)
+        total_written += upsert_timeseries(rows)
+        if still_failed:
+            detail = ", ".join(f"{c}:{k}" for c, _, k in still_failed[:50])
+            logger.error(f"重試後仍有 {len(still_failed)} 筆失敗，網路恢復後請用 --only-missing 補跑。前50筆: {detail}")
+        else:
+            logger.info(f"重試一輪後全部補齊，累計寫入 {total_written} 筆")
+
     return total_written
 
 
-def _mopsfin_compare(url: str, company_id: str, compare_item: str) -> dict[str, float]:
+def _mopsfin_compare(url: str, company_id: str, compare_item: str) -> dict[str, float] | None:
+    """成功回傳單季序列(該公司沒有此科目時為空dict)；請求或解析失敗回傳None，讓呼叫端能區分
+    「真的沒資料」與「這次沒抓到」。"""
     payload = {
         "compareItem": compare_item,
         "quarter": "true",
@@ -182,12 +229,12 @@ def _mopsfin_compare(url: str, company_id: str, compare_item: str) -> dict[str, 
     }
     resp = http_post(url, data=payload, logger=logger, headers=MOPSFIN_HEADERS)
     if resp is None:
-        return {}
+        return None
     try:
         data = resp.json()
     except Exception as e:
         logger.warning(f"mopsfin解析失敗 {compare_item} {company_id}: {e}")
-        return {}
+        return None
 
     xaxis = data.get("xaxisList", [])
     graph_data = data.get("graphData", [])

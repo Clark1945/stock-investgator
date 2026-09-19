@@ -130,6 +130,8 @@ docker compose up -d --build
 | 看 dashboard log | `docker compose logs -f dashboard` |
 | 看排程執行 log | `docker compose logs -f scheduler` |
 | 不等排程、手動立即更新一次 | `docker compose exec dashboard python -m src.run_daily` |
+| 手動跑一次全市場損益表回補（約1.5~2小時） | `docker compose exec dashboard python scripts/backfill_income_statement_all.py` |
+| 回補中途斷網後補洞（只補還沒資料的公司/指標） | `docker compose exec dashboard python scripts/backfill_income_statement_all.py --only-missing` |
 | 全部停止 | `docker compose down` |
 | 全部啟動（不重新build） | `docker compose up -d` |
 | 重新 build（改了程式碼或 requirements.txt 之後） | `docker compose up -d --build` |
@@ -145,6 +147,11 @@ docker compose up -d --build
 - **Dashboard 資料是舊的、看不到新抓的資料**：確認 `docker compose exec dashboard ls -la data/` 裡
   `invensgator.db` 的檔案時間是不是最新版本，很可能是步驟3的 scp 忘記做或傳錯路徑。
 - **FRED 相關指標(美債殖利率/Fed利率)一直是空的**：確認 `config/.env` 有沒有正確傳到 server，且內容有填 `FRED_API_KEY`。
+- **全市場損益表(營業收入/營業毛利/營業利益)部分公司是空的**：先看 `logs/YYYY-MM-DD.log` 有沒有
+  `Temporary failure in name resolution`／`Read timed out`（回補期間server斷網或DNS中斷）。新版程式碰到失敗會
+  冷卻60秒重試一輪，仍失敗的會列在 `重試後仍有 N 筆失敗` 那行log；網路恢復後用上面維運表的
+  `--only-missing` 指令補洞即可，不用整個重跑。要確認斷網當下server本身有沒有問題：
+  `journalctl --since "<時間>" --until "<時間>" | grep -iE "NetworkManager|dhcp|resolved|docker"`。
 
 ---
 

@@ -392,6 +392,17 @@ def query_indicator_codes_like(pattern: str) -> list[str]:
         return [r["indicator_code"] for r in result]
 
 
+def query_indicator_codes_since(pattern: str, since_date: str) -> set[str]:
+    """回傳符合 LIKE pattern、且在 since_date(含)之後至少有一筆資料的 distinct indicator_code，
+    供「只補還沒有資料的公司/指標」這類補洞回補判斷用。"""
+    with get_connection() as c:
+        result = c.execute(
+            "SELECT DISTINCT indicator_code FROM timeseries WHERE indicator_code LIKE ? AND date >= ?",
+            (pattern, since_date),
+        ).fetchall()
+        return {r["indicator_code"] for r in result}
+
+
 def query_labels_like(pattern: str) -> dict[str, str]:
     """回傳符合 pattern 的 distinct indicator_code -> 最新一筆的 label，供動態下拉選單(如全上市公司選擇器)使用。"""
     with get_connection() as c:
