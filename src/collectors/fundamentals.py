@@ -45,9 +45,22 @@ def _watchlist() -> list[dict]:
 
 
 def collect_monthly_revenue_history(start_date: str, end_date: str) -> int:
-    """收全部上市公司（非僅觀察清單），該歷史彙總檔本來就是全市場單一檔案，不需額外請求。"""
+    """收全部上市公司（非僅觀察清單），該歷史彙總檔本來就是全市場單一檔案，不需額外請求。
+
+    各公司月營收的法定申報期限是次月10日，早報的公司先進檔、晚報的公司之後才補進去，
+    所以即使每日排程只回看5天，也一律往前多重抓2個月，否則上個月只會停留在「剛好抓到那天」
+    已公告的那批公司(曾發生8月只有645/992家)，晚公告的公司永遠補不進來。
+    """
     url_tpl = SETTINGS["twse"]["monthly_revenue_history"]
     rows = []
+
+    end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+    y, m = end_dt.year, end_dt.month - 2
+    if m < 1:
+        m += 12
+        y -= 1
+    if (y, m) < tuple(int(x) for x in start_date[:7].split("-")):
+        start_date = f"{y}-{m:02d}-01"
 
     for roc_year, month in _roc_year_months(start_date, end_date):
         url = url_tpl.format(roc_year=roc_year, month=month)
