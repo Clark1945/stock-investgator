@@ -12,6 +12,11 @@ import streamlit as st
 from src.db.repo import insert_manual_entry, query_manual_entries
 
 st.set_page_config(page_title="人工輸入", layout="wide")
+from dashboard.intro import show_intro
+from dashboard.theme import apply_theme
+
+show_intro()
+apply_theme()
 st.title("人工輸入 — 無免費結構化來源的項目")
 
 st.markdown(

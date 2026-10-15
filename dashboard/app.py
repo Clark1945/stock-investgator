@@ -12,10 +12,15 @@ from src.db.repo import query_run_log
 from src.db.schema import init_db
 
 st.set_page_config(page_title="台股外資動向儀表板", layout="wide")
+from dashboard.intro import show_intro
+from dashboard.theme import apply_theme, hero
+
+show_intro()
+apply_theme()
 
 init_db()
 
-st.title("台股外資動向儀表板")
+hero("台股外資動向儀表板", "依循「外資是否會來台股」五層判斷框架，整合總經、評價、基本面、被動資金與短期籌碼資料。")
 st.markdown(
     """
 本儀表板依循「外資是否會來台股」的五層判斷框架，請由左側頁面選單切換：

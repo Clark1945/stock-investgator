@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Green Dream Transition</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --dark: #2b2a25;
+    --beige: #bdb5a1;
+    --white: #f7f5ef;
+    --gold: #b8913f;
+    --logo: clamp(64px, 8.8vw, 150px);     /* 原片 logo 約佔畫面寬 9% */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body { background: transparent; overflow: hidden; font-family: "Montserrat", sans-serif; }
+
+  #stage { position: fixed; inset: 0; overflow: hidden; background: #a9aaa1; z-index: 1; }
+  .layer { position: absolute; inset: 0; }
+
+  /* 圖一：灰色網格底 */
+  .paper {
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,.03) 0 1px, transparent 1px 3px),
+      linear-gradient(rgba(60,62,55,.28) 2px, transparent 2px) 0 0 / 100% 26.5vh,
+      linear-gradient(90deg, rgba(60,62,55,.28) 2px, transparent 2px) 0 0 / 11.1vw 100%,
+      #a9aaa1;
+  }
+  /* 圖二～四：轉暗 */
+  .dark {
+    background:
+      linear-gradient(rgba(255,255,255,.07) 1px, transparent 1px) 0 0 / 100% 30vh,
+      linear-gradient(90deg, rgba(255,255,255,.07) 1px, transparent 1px) 0 0 / 13.3vw 100%,
+      var(--dark);
+    opacity: 0; transition: opacity .26s ease-out;
+  }
+  /* 米色 + 細掃描線 */
+  .beige {
+    background:
+      repeating-linear-gradient(0deg, rgba(0,0,0,.035) 0 1px, transparent 1px 3px),
+      radial-gradient(ellipse at 50% 40%, #c8c1ae, var(--beige) 70%);
+    opacity: 0; transition: opacity .9s ease-in-out;
+  }
+  .on { opacity: 1 !important; }
+
+  /* 背景大浮水印（含 + −） */
+  .watermark {
+    position: absolute; left: 50%; top: 50%; width: min(110vw, 1700px);
+    transform: translate(-50%, -40%); opacity: 0; transition: opacity 1.2s ease-in;
+  }
+  .watermark path { stroke: rgba(255,255,255,.06); }
+  .watermark .s { stroke-width: 9; stroke-linecap: butt; stroke: rgba(255,255,255,.035); }
+
+  /* ---------- 準星（依使用者截圖的位置量測） ----------
+     A 圖一：四條粗白線＋細延伸線，從畫面邊緣往中央拉近
+     B 圖二：粗線停成中央短粗刻度，邊緣留細長線
+     C 圖三：一閃 → 刻度變細線
+     D 圖四：一閃 → 四個點 */
+  .xh i { position: absolute; background: var(--white); transition: all .26s cubic-bezier(.2,.7,.3,1); }
+  .xh .tk.l { top: calc(50% - .15vw); height: .3vw; left: 0; width: 37vw; }
+  .xh .tk.r { top: calc(50% - .15vw); height: .3vw; left: 62vw; width: 38vw; }
+  .xh .tk.t { left: calc(50% - .15vw); width: .3vw; top: 0; height: 20vh; }
+  .xh .tk.b { left: calc(50% - .15vw); width: .3vw; top: 80vh; height: 20vh; }
+  .xh .tn { opacity: .75; }
+  .xh .tn.l { top: 50%; height: 1px; left: 37vw; width: 5vw; }
+  .xh .tn.r { top: 50%; height: 1px; left: 58vw; width: 4vw; }
+  .xh .tn.t { left: 50%; width: 1px; top: 20vh; height: 11vh; }
+  .xh .tn.b { left: 50%; width: 1px; top: 69vh; height: 11vh; }
+  .xh .d { width: 4px; height: 4px; opacity: 0; transition: none; }
+  .xh .d.tl { left: calc(50% - 2.4vw - 2px); top: calc(50% - 2.4vw - 2px); }
+  .xh .d.tr { left: calc(50% + 2.4vw - 2px); top: calc(50% - 2.4vw - 2px); }
+  .xh .d.bl { left: calc(50% - 2.4vw - 2px); top: calc(50% + 2.4vw - 2px); }
+  .xh .d.br { left: calc(50% + 2.4vw - 2px); top: calc(50% + 2.4vw - 2px); }
+  .xh.B .tk.l { left: calc(50% - 6.4vw); width: 3.1vw; }
+  .xh.B .tk.r { left: calc(50% + 3.3vw); width: 3.1vw; }
+  .xh.B .tk.t { top: calc(50% - 6.4vw); height: 3.1vw; }
+  .xh.B .tk.b { top: calc(50% + 3.3vw); height: 3.1vw; }
+  .xh.B .tn.l { left: 0; width: 29vw; }
+  .xh.B .tn.r { left: 72vw; width: 28vw; }
+  .xh.B .tn.t, .xh.B .tn.b { opacity: 0; }
+  .xh.C i { transition: none; }
+  .xh.C .tk.l, .xh.C .tk.r { height: 1px; top: 50%; }
+  .xh.C .tk.t, .xh.C .tk.b { width: 1px; left: 50%; }
+  .xh.C .tn { opacity: 0; }
+  .xh.D .tk { opacity: 0; }
+  .xh.D .d { opacity: 1; }
+  .xh.blink i { visibility: hidden; }                 /* 「一閃」：空一拍再換形狀 */
+  .xh.gone i { opacity: 0 !important; }
+
+  /* ---------- 圖五～六：四點拉出雙白線，框沿著線往外展開，中央菱形 ---------- */
+  .frame {
+    position: absolute; left: calc(50% - 2.4vw); top: calc(50% - 2.4vw); width: 4.8vw; height: 4.8vw;
+    opacity: 0; transition: left .9s, top .9s, width .9s, height .9s, opacity .1s; transition-timing-function: cubic-bezier(.25,.6,.3,1);
+  }
+  .frame.show { opacity: 1; }
+  .frame.open { left: calc(50% - 6.15vw); top: calc(50% - 6.15vw); width: 12.3vw; height: 12.3vw; }
+  .frame .c { position: absolute; width: 17%; height: 17%; border: 3px solid var(--white); transition: width .15s ease-in, height .15s ease-in; }
+  .frame .c.tl { left: 0; top: 0; border-right: 0; border-bottom: 0; }
+  .frame .c.tr { right: 0; top: 0; border-left: 0; border-bottom: 0; }
+  .frame .c.bl { left: 0; bottom: 0; border-right: 0; border-top: 0; }
+  .frame .c.br { right: 0; bottom: 0; border-left: 0; border-top: 0; }
+  .frame.dots .c { width: 3px; height: 3px; }
+  /* 雙白線：每條導軌都是兩條細線 */
+  .frame .rail { position: absolute; border: 0 solid rgba(255,255,255,.75); transition: transform .45s cubic-bezier(.3,0,.2,1), opacity .3s; }
+  .frame .rail.h { height: 6px; left: -150vw; right: -150vw; border-top-width: 1px; border-bottom-width: 1px; transform: scaleX(0); }
+  .frame .rail.v { width: 6px; top: -150vh; bottom: -150vh; border-left-width: 1px; border-right-width: 1px; transform: scaleY(0); }
+  .frame .rail.h.a { top: -3px; } .frame .rail.h.b { bottom: -3px; }
+  .frame .rail.v.a { left: -3px; } .frame .rail.v.b { right: -3px; }
+  .frame.rails .rail { transform: none; }
+  .frame.norail .rail { opacity: 0; }
+  .diamond { position: absolute; left: calc(50% - 4px); top: calc(50% - 4px); width: 8px; height: 8px; background: var(--white); transform: rotate(45deg); opacity: 0; }
+  .diamond.on { opacity: 1; }
+
+  /* ---------- HUD 圖層：整體慢慢上飄，故障時加速捲出 ---------- */
+  #hud { position: absolute; inset: 0; }   /* 位移由 JS 逐格以整數像素驅動，移動中文字線條不會糊 */
+
+  /* Logo */
+  .logo-wrap {
+    position: absolute; left: calc(50% - var(--logo) / 2); top: calc(50% - var(--logo) / 4);
+    width: var(--logo);
+  }
+  .logo { width: 100%; display: block; overflow: visible; }
+  .logo .loop { fill: none; stroke: var(--white); stroke-width: 15; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+  .logo.draw .loop { animation: draw .65s cubic-bezier(.45,0,.3,1) forwards; }
+  .logo .sign { stroke: var(--white); stroke-width: 10; opacity: 0; }
+  .logo.signs .sign { animation: flick .25s steps(1) forwards; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  @keyframes flick { 0% { opacity: 1; } 30% { opacity: 0; } 50%, 100% { opacity: 1; } }
+  /* 故障：logo 切成幾條橫向色帶，部分短暫消失；位置固定不晃動，始終對準中心 */
+  .shards { position: absolute; left: 0; top: 0; width: 100%; aspect-ratio: 2 / 1; display: none; }
+  .logo-wrap.glitch .shards { display: block; }
+  .logo-wrap.glitch .logo { visibility: hidden; }
+  .shards svg { position: absolute; left: 0; top: 0; width: 100%; overflow: visible; }
+  .shards .loop { fill: none; stroke: var(--white); stroke-width: 15; stroke-linecap: round; }
+  .shards .sign { stroke: var(--white); stroke-width: 10; }
+  .stem {
+    position: absolute; left: calc(50% - 1px); top: calc(100% + var(--logo) * .2);
+    width: 2px; height: 90vh; background: rgba(255,255,255,.75);
+    transform: scaleY(0); transform-origin: top; transition: transform .9s cubic-bezier(.6,0,.2,1);
+  }
+  .stem::before { content: ""; position: absolute; left: -3px; top: -10px; width: 8px; height: 8px; background: var(--white); }
+  .stem.on { transform: scaleY(1); }
+
+  /* HUD 標註：小方點 → 引線 → 半透明框 → 白塊填滿 → 白塊縮成左側粗條 + 文字 */
+  .co { position: absolute; display: flex; align-items: center; }
+  .co.rev { flex-direction: row-reverse; }
+  .co .pt { width: 7px; height: 7px; background: var(--white); flex: none; opacity: 0; }
+  .co .ln { height: 1px; width: var(--len); background: rgba(255,255,255,.75); transform: scaleX(0); transform-origin: left; transition: transform .3s cubic-bezier(.6,0,.2,1); }
+  .co.rev .ln { transform-origin: right; }
+  .co .box { position: relative; width: clamp(130px, 15vw, 260px); height: clamp(34px, 3.9vw, 66px); margin: 0 6px; }
+  .co .box .frm { position: absolute; inset: 0; border: 1px solid rgba(255,255,255,.55); background: rgba(255,255,255,.1); opacity: 0; }
+  .co .box .solid { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: var(--white); transform: scaleX(0); transform-origin: left; transition: transform .18s ease-out; }
+  .co .box .txt {
+    position: absolute; left: 9%; top: 50%; transform: translateY(-50%);
+    font: 400 clamp(7px, .58vw, 11px)/1.35 "Montserrat"; letter-spacing: .04em;
+    color: var(--white); white-space: nowrap; opacity: 0;
+  }
+  .co.s1 .pt { opacity: 1; } .co.s1 .ln { transform: none; }
+  .co.s2 .frm { opacity: 1; }
+  .co.s3 .solid { transform: scaleX(.62); }
+  .co.s4 .solid { transform: scaleX(.04); transition-duration: .25s; }
+  .co.s4 .txt { opacity: 1; transition: opacity .2s .1s; }
+
+  /* 資料表格 */
+  .tbl {
+    position: absolute; display: grid; grid-template-columns: repeat(4, 1fr); gap: clamp(3px, .45vw, 8px);
+    width: clamp(150px, 17vw, 300px); opacity: 0;
+  }
+  .tbl i {
+    display: block; height: clamp(14px, 2vw, 34px); background: rgba(255,255,255,.1);
+    font: 600 clamp(4px, .32vw, 6px)/1 "Montserrat"; font-style: normal; letter-spacing: .05em;
+    color: rgba(255,255,255,.75); text-align: center; padding-top: 3px;
+  }
+  .tbl.on { animation: tbl .4s steps(1) forwards; }
+  @keyframes tbl { 0% { opacity: .9; } 25% { opacity: 0; } 50% { opacity: .5; } 100% { opacity: 1; } }
+  /* 從底部升起的細白線 */
+  .riser { position: absolute; bottom: 0; width: 1px; height: 45vh; background: rgba(255,255,255,.7); transform: scaleY(0); transform-origin: bottom; transition: transform .45s cubic-bezier(.3,0,.2,1); }
+  .riser::before { content: ""; position: absolute; left: -3px; top: -4px; width: 7px; height: 7px; background: var(--white); }
+  .riser.on { transform: scaleY(1); }
+
+  /* 柱子 canvas */
+  #streak { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  /* 動畫結束：露出自己的畫面 */
+  #stage.reveal { background: transparent; }
+  #stage.reveal > :not(#streak) { display: none; }
+  #stage.done { display: none; }
+  #page {
+    position: fixed; inset: 0; z-index: 0; display: grid; place-items: center; text-align: center;
+    background: radial-gradient(circle at 50% 40%, #2a2721, #0d0d0d 70%);
+    color: #e9e6dd;
+  }
+  #page h1 { font-weight: 800; font-size: clamp(24px, 4vw, 48px); letter-spacing: .04em; }
+  #page p { color: #9b968a; margin-top: 8px; font-size: 14px; }
+
+  #replay {
+    position: fixed; right: 16px; bottom: 16px; z-index: 9;
+    font: 600 12px "Montserrat", sans-serif; letter-spacing: .14em;
+    background: var(--gold); color: #fff; border: 0; padding: 10px 20px; cursor: pointer;
+    opacity: 0; transition: opacity .4s; pointer-events: none;
+  }
+  #replay.on { pointer-events: auto; }
+
+  /* ---------- 手機／直式螢幕：原本的尺寸都以 vw 計算，直式畫面會縮成一小團，改用較大的比例重排 ---------- */
+  @media (max-aspect-ratio: 1/1) {
+    :root { --logo: 40vw; }
+    .xh .tk.l, .xh .tk.r { height: 1.1vw; top: calc(50% - .55vw); }
+    .xh .tk.t, .xh .tk.b { width: 1.1vw; left: calc(50% - .55vw); }
+    .xh .tn.l { left: 22vw; width: 14vw; } .xh .tn.r { left: 64vw; width: 14vw; }
+    .xh .d.tl { left: calc(50% - 7vw - 2px); top: calc(50% - 7vw - 2px); }
+    .xh .d.tr { left: calc(50% + 7vw - 2px); top: calc(50% - 7vw - 2px); }
+    .xh .d.bl { left: calc(50% - 7vw - 2px); top: calc(50% + 7vw - 2px); }
+    .xh .d.br { left: calc(50% + 7vw - 2px); top: calc(50% + 7vw - 2px); }
+    .xh.B .tk.l { left: calc(50% - 17vw); width: 9vw; } .xh.B .tk.r { left: calc(50% + 8vw); width: 9vw; }
+    .xh.B .tk.t { top: calc(50% - 17vw); height: 9vw; } .xh.B .tk.b { top: calc(50% + 8vw); height: 9vw; }
+    .xh.B .tn.l { left: 0; width: 22vw; } .xh.B .tn.r { left: 78vw; width: 22vw; }
+    .frame { left: calc(50% - 7vw); top: calc(50% - 7vw); width: 14vw; height: 14vw; }
+    .frame.open { left: calc(50% - 18vw); top: calc(50% - 18vw); width: 36vw; height: 36vw; }
+    .frame .c { border-width: 2px; }
+    .co { left: 4% !important; right: auto; flex-direction: row; --len: 6vw !important; }
+    .co.c1 { top: 14% !important; } .co.c2 { top: 24% !important; } .co.c3 { top: 35% !important; }
+    .co .box { width: 58vw; height: 13vw; }
+    .co .box .txt { font-size: 2.7vw; }
+    .tbl { width: 42vw; gap: 1vw; }
+    .tbl i { height: 6vw; font-size: 1.6vw; padding-top: 1vw; }
+    .stem { height: 60vh; }
+  }
+  /* 橫向的手機(高度很矮)只需把 HUD 文字放大到看得清楚 */
+  @media (max-height: 480px) and (min-aspect-ratio: 1/1) { .co .box .txt { font-size: 9px; } }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div class="layer paper"></div>
+  <div class="layer dark" id="dark"></div>
+  <div class="layer beige" id="beige"></div>
+
+  <svg class="watermark" id="watermark" viewBox="0 0 200 100" fill="none">
+    <path d="M100,50 C82,16 32,12 30,50 C28,86 80,84 100,50 C120,16 170,14 170,50 C170,86 118,84 100,50" stroke-width="13" stroke-linecap="round"/>
+    <path class="s" d="M48,50 H70 M59,39 V61 M130,50 H152"/>
+  </svg>
+
+  <div class="xh" id="xh">
+    <i class="tk l"></i><i class="tk r"></i><i class="tk t"></i><i class="tk b"></i>
+    <i class="tn l"></i><i class="tn r"></i><i class="tn t"></i><i class="tn b"></i>
+    <i class="d tl"></i><i class="d tr"></i><i class="d bl"></i><i class="d br"></i>
+  </div>
+
+  <div class="frame" id="frame">
+    <i class="rail h a"></i><i class="rail h b"></i><i class="rail v a"></i><i class="rail v b"></i>
+    <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+  </div>
+  <div class="diamond" id="diamond"></div>
+
+  <div id="hud">
+    <div id="field"></div>
+
+    <div class="logo-wrap" id="logoWrap">
+      <svg class="logo" id="logo" viewBox="0 0 200 100">
+        <!-- 從左圈頂端起筆，逆時針繞左圈 → 穿過中心 → 繞右圈 → 回到起筆點接起來 -->
+        <path class="loop" pathLength="1" d="M62,16 C42,14 30,30 30,50 C30,80 76,82 100,50 C122,18 170,14 170,50 C170,86 120,84 100,50 C90,36 80,18 62,16"/>
+        <path class="sign" d="M50,50 H72 M61,39 V61"/>
+        <path class="sign" d="M128,50 H150"/>
+      </svg>
+      <div class="shards" id="shards"></div>
+      <div class="stem" id="stem"></div>
+    </div>
+
+    <div class="co c1" style="left:0;top:17%;--len:15vw"><div class="ln"></div><div class="pt"></div><div class="box"><div class="frm"></div><div class="solid"></div><div class="txt">FILE NUMBER : G-0425<br>STATUS : ARCHIVED</div></div></div>
+    <div class="co c2" style="left:71%;top:19%;--len:16vw"><div class="pt"></div><div class="ln"></div><div class="pt"></div><div class="box"><div class="frm"></div><div class="solid"></div><div class="txt">SECTOR : GREENHOUSE<br>ACCESS : LEVEL 3</div></div></div>
+    <div class="co c3" style="left:59%;top:50%;--len:17vw"><div class="pt"></div><div class="ln"></div><div class="pt"></div><div class="box"><div class="frm"></div><div class="solid"></div><div class="txt">SAMPLE : VX-17<br>STABILITY : 92.4%</div></div></div>
+  </div>
+
+  <canvas id="streak"></canvas>
+</div>
+
+<script>
+(function () {
+  const fe = window.frameElement;
+  const wrap = fe && fe.parentElement;
+  const hide = () => { if (fe) fe.style.display = "none"; if (wrap) wrap.style.display = "none"; };
+  window.__introDone = hide;
+  try {
+    if (window.parent.sessionStorage.getItem("introShown")) { window.__skipIntro = true; hide(); return; }
+    window.parent.sessionStorage.setItem("introShown", "1");
+  } catch (e) {}
+  if (fe) {
+    Object.assign(fe.style, { position: "fixed", left: "0", top: "0", width: "100vw", height: "100vh",
+                              border: "0", zIndex: "1000000", background: "transparent" });
+    try {   // iframe 的 color-scheme 與外層不同時瀏覽器會幫它補不透明底色，這裡對齊外層
+      document.documentElement.style.colorScheme = window.parent.getComputedStyle(window.parent.document.documentElement).colorScheme;
+    } catch (e) {}
+  }
+  addEventListener("click", () => { runId++; cancelAnimationFrame(streakRAF); clearInterval(shardTimer); hide(); });
+})();
+</script>
+<script>
+const $ = id => document.getElementById(id);
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const rand = (a, b) => a + Math.random() * (b - a);
+const DPR = window.devicePixelRatio || 1;
+
+/* ================= 資料場：表格 + 虛線 + 細白線 ================= */
+// 表格只保留原片的 3 組
+const field = $("field");
+const BASE_TBL = [[8, 63], [20, 78], [79, 24]];
+function buildField() {
+  field.innerHTML = "";
+  const cells = () => Array.from({ length: 8 }, () => "<i>RHINE LAB</i>").join("");
+  BASE_TBL.forEach(([x, y]) => field.insertAdjacentHTML("beforeend", `<div class="tbl base" style="left:${x}%;top:${y}%">${cells()}</div>`));
+  for (let i = 0; i < 9; i++)
+    field.insertAdjacentHTML("beforeend", `<div class="riser" style="left:${rand(15, 85).toFixed(1)}%;bottom:${rand(-90, -40).toFixed(0)}vh;height:${rand(18, 50).toFixed(0)}vh;transition-delay:${rand(0, .3).toFixed(2)}s"></div>`);
+}
+
+/* ================= 單色細柱：頻譜式竄升淹沒 ================= */
+const streak = $("streak"), sctx = streak.getContext("2d");
+const FLOOD = "#1c1b19";                              // 淹沒用的單色
+let stripes = [], streakStart = 0, exitStart = 0, streakRAF;
+function buildStripes() {
+  const W = Math.round(innerWidth * DPR), H = Math.round(innerHeight * DPR);
+  streak.width = W; streak.height = H;
+  stripes = [];
+  for (let x = 0; x < W;) {
+    // 原片的柱子很細很密
+    const w = Math.max(1, Math.round(rand(1.5, 9) * DPR * (Math.random() < .08 ? 3 : 1)));
+    stripes.push({ x, w, seed: rand(.15, 1), delay: rand(0, 260), speed: rand(.9, 1.7), wob: rand(0, 6.28) });
+    x += w;
+  }
+}
+function drawStreak(now) {
+  const W = streak.width, H = streak.height, t = now - streakStart;
+  sctx.clearRect(0, 0, W, H);
+  sctx.fillStyle = FLOOD;
+  for (const s of stripes) {
+    const local = Math.max(0, t - s.delay);
+    // 先在底線冒出小方塊，再依各自高度像頻譜一樣跳動上升，最後全部頂滿
+    const p = Math.min(1, (local / 650) * s.speed);
+    const jump = p < 1 ? Math.abs(Math.sin(local / 45 + s.wob)) * .3 * (1 - p) : 0;
+    let h = local > 0 ? Math.max(4 * DPR, (Math.pow(p, 2.2) * (1 - s.seed) + p * s.seed + jump) * H) : 0;
+    if (exitStart) {
+      const e = Math.min(1, Math.max(0, (now - exitStart - s.delay * .8) / 520 * s.speed));
+      h *= 1 - e * e;
+    }
+    h = Math.round(Math.min(h, H));
+    if (h > 0) sctx.fillRect(s.x, H - h, s.w, h);
+  }
+  streakRAF = requestAnimationFrame(drawStreak);
+}
+
+/* ================= Logo 故障切片 ================= */
+let shardTimer;
+const BANDS = 6;
+function startShards() {
+  const box = $("shards"), art = $("logo").innerHTML;
+  box.innerHTML = "";
+  const pieces = [];
+  {
+    for (let b = 0; b < BANDS; b++) {
+      const top = (b / BANDS) * 100, bot = 100 - ((b + 1) / BANDS) * 100;
+      const el = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      el.setAttribute("viewBox", "0 0 200 100");
+      el.innerHTML = art;
+      el.style.clipPath = `inset(${top}% -20% ${bot}% -20%)`;
+      box.appendChild(el);
+      pieces.push(el);
+    }
+  }
+  const shuffle = () => {
+    for (const el of pieces) {
+      el.style.opacity = Math.random() < .2 ? 0 : 1;
+    }
+  };
+  shuffle();
+  clearInterval(shardTimer);
+  shardTimer = setInterval(shuffle, 70);
+}
+
+/* ================= HUD 位移：整數像素 ================= */
+let hudRAF, hudY = 0;
+function setHud(y) { hudY = y; $("hud").style.transform = `translateY(${Math.round(y)}px)`; }
+function hudDrift() {                                     // 1.7 秒等速上飄 8vh
+  const t0 = performance.now(), dist = innerHeight * .08;
+  cancelAnimationFrame(hudRAF);
+  (function f(now) {
+    const p = Math.min(1, (now - t0) / 1700);
+    setHud(-dist * p);
+    if (p < 1) hudRAF = requestAnimationFrame(f);
+  })(t0);
+}
+function hudFlyout() {                                    // 從目前位置加速捲出畫面上方
+  const t0 = performance.now(), from = hudY, to = -innerHeight * .85;
+  cancelAnimationFrame(hudRAF);
+  (function f(now) {
+    const p = Math.min(1, (now - t0) / 700);
+    setHud(from + (to - from) * p * p * p);
+    if (p < 1) hudRAF = requestAnimationFrame(f);
+  })(t0);
+}
+
+/* ================= 時間軸（依原片 0.5 倍速逐格量測，換算回正常速度） ================= */
+let runId = 0;
+function reset() {
+  cancelAnimationFrame(streakRAF); clearInterval(shardTimer);
+  buildStripes(); buildField();
+  sctx.clearRect(0, 0, streak.width, streak.height);
+  ["dark", "beige", "watermark", "diamond"].forEach(id => $(id).classList.remove("on"));
+  $("xh").className = "xh";
+  $("frame").className = "frame";
+  cancelAnimationFrame(hudRAF); setHud(0);
+  $("logoWrap").className = "logo-wrap";
+  $("logo").setAttribute("class", "logo");
+  $("stem").className = "stem";
+  document.querySelectorAll(".co").forEach(c => c.classList.remove("s1", "s2", "s3", "s4"));
+  exitStart = 0;
+  $("stage").className = "";
+  
+}
+
+async function play() {
+  const id = ++runId;
+  const alive = () => id === runId;
+  const step = async ms => { await wait(ms); if (!alive()) throw 0; };
+  const later = (ms, fn) => setTimeout(() => alive() && fn(), ms);
+  reset();
+  try {
+    // 圖一 → 圖二：四條線拉近中央，同時轉暗
+    await step(40);
+    $("xh").classList.add("B");
+    $("dark").classList.add("on");
+    await step(300);
+    // 圖三：一閃變成細線
+    $("xh").classList.add("blink");
+    await step(50);
+    $("xh").classList.remove("blink");
+    $("xh").classList.add("C");
+    await step(110);
+    // 圖四：一閃變成四個點
+    $("xh").classList.add("blink");
+    await step(50);
+    $("xh").classList.remove("blink");
+    $("xh").classList.add("D");
+    await step(300);
+
+    // 圖五：逐漸亮起，四個點拉出雙白線，框從四點的位置沿線往外展開，中央菱形
+    $("xh").classList.add("gone");
+    $("frame").classList.add("show", "rails");
+    $("diamond").classList.add("on");
+    $("beige").classList.add("on");
+    $("watermark").classList.add("on");
+    await step(40);
+    $("frame").classList.add("open");
+    await step(200);
+    // 圖六：繼續亮起，繪出萊茵生命的環
+    $("diamond").classList.remove("on");
+    $("logo").classList.add("signs", "draw");
+    await step(750);
+    $("frame").classList.add("norail");
+
+    // 框角縮成四點後消失
+    await step(250);
+    $("frame").classList.add("dots");
+    await step(130);
+    $("frame").classList.remove("show");
+
+    // 4. 標註依序展開，同時整個 HUD 開始慢慢上飄
+    hudDrift();
+    document.querySelectorAll(".co").forEach((c, i) => {
+      const t0 = i * 130;
+      later(t0, () => c.classList.add("s1"));
+      later(t0 + 160, () => c.classList.add("s2"));
+      later(t0 + 230, () => c.classList.add("s3"));
+      later(t0 + 450, () => c.classList.add("s4"));
+    });
+    await step(500);
+    document.querySelectorAll(".tbl.base").forEach((t, i) => later(i * 140, () => t.classList.add("on")));
+    await step(300);
+    $("stem").classList.add("on");
+    await step(800);
+
+    // 5. 故障：logo 碎裂，HUD 從目前位置加速往上捲出
+    startShards();
+    $("logoWrap").classList.add("glitch");
+    hudFlyout();
+    await step(380);
+    document.querySelectorAll(".riser").forEach(r => r.classList.add("on"));
+
+    // 6. 單色細柱從底部竄升淹沒
+    await step(120);
+    streakStart = performance.now();
+    streakRAF = requestAnimationFrame(drawStreak);
+    await step(1100);                                  // 等柱子鋪滿全屏
+
+    // 7. 柱子沉下，露出自己的畫面
+    $("stage").classList.add("reveal");
+    exitStart = performance.now();
+    await step(1300);
+    cancelAnimationFrame(streakRAF); clearInterval(shardTimer);
+    $("stage").classList.add("done");
+    window.__introDone && window.__introDone();
+  } catch (e) { /* 被新一輪 play() 中斷 */ }
+}
+
+addEventListener("load", () => { if (!window.__skipIntro) play(); });
+</script>
+</body>
+</html>

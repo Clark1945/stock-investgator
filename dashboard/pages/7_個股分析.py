@@ -21,6 +21,11 @@ from src.db.repo import (
 )
 
 st.set_page_config(page_title="個股分析", layout="wide")
+from dashboard.intro import show_intro
+from dashboard.theme import apply_theme
+
+show_intro()
+apply_theme()
 st.title("個股分析")
 
 start_date, end_date = date_range_sidebar(default_days=620)

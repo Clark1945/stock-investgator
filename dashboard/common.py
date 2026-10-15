@@ -77,9 +77,10 @@ def line_chart(df: pd.DataFrame, code: str, title: str | None = None):
         fig.update_yaxes(range=[lo - pad if lo < 0 else 0, hi + pad])
         st.caption(f"目前僅有 {len(sub)} 筆資料點，尚未累積足夠歷史走勢，會隨每日/每月排程逐步增加。")
     fig.update_layout(
-        title=f"{label}{'（代理指標，非官方數據）' if is_proxy else ''}",
-        margin=dict(l=10, r=10, t=40, b=10),
+        title=dict(text=f"{label}{'（代理指標，非官方數據）' if is_proxy else ''}", font=dict(size=14), x=0.02),
+        margin=dict(l=10, r=10, t=44, b=10),
         height=320,
+        showlegend=False,
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -97,5 +98,10 @@ def multi_line_chart(df: pd.DataFrame, codes: list[str], title: str):
         label = s.iloc[-1]["label"] or code
         fig.add_trace(go.Scatter(x=s["date"], y=s["value"], mode="lines+markers", name=label))
     fig.update_xaxes(type="date")
-    fig.update_layout(title=title, margin=dict(l=10, r=10, t=40, b=10), height=380)
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=14), x=0.02),
+        margin=dict(l=10, r=10, t=44, b=10),
+        height=380,
+        legend=dict(orientation="h", yanchor="top", y=-0.12, x=0),  # 圖例放圖下方橫排，手機窄螢幕不會擠壓繪圖區
+    )
     st.plotly_chart(fig, use_container_width=True)

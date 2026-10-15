@@ -10,6 +10,11 @@ import streamlit as st
 from dashboard.common import date_range_sidebar, line_chart, load_df, metric_cards
 
 st.set_page_config(page_title="三、產業/基本面層", layout="wide")
+from dashboard.intro import show_intro
+from dashboard.theme import apply_theme
+
+show_intro()
+apply_theme()
 st.title("三、產業/基本面層 — 決定「買什麼」")
 
 start_date, end_date = date_range_sidebar()

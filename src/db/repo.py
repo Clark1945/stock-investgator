@@ -166,6 +166,16 @@ def query_recent_stock_ohlc_bulk(stock_codes: list[str], start_date: str):
         return c.execute(sql, stock_codes + [start_date]).fetchall()
 
 
+def query_all_stock_ohlc_since(start_date: str):
+    """回傳全部股票在 start_date(含)之後的OHLC row(依代號、日期排序)，
+    供全市場「近N日漲跌幅排行」這類不限定個股清單的篩選使用。"""
+    with get_connection() as c:
+        return c.execute(
+            "SELECT stock_code, date, close, volume FROM stock_ohlc WHERE date >= ? ORDER BY stock_code ASC, date ASC",
+            (start_date,),
+        ).fetchall()
+
+
 def query_stock_ohlc(stock_code: str, start_date: str | None = None, end_date: str | None = None):
     sql = "SELECT * FROM stock_ohlc WHERE stock_code=?"
     params: list = [stock_code]

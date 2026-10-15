@@ -14,6 +14,11 @@ from dashboard.common import date_range_sidebar, line_chart, load_df, metric_car
 from src.db.repo import query_options_chain
 
 st.set_page_config(page_title="五、短期籌碼/程式交易層", layout="wide")
+from dashboard.intro import show_intro
+from dashboard.theme import apply_theme
+
+show_intro()
+apply_theme()
 st.title("五、短期籌碼/程式交易層 — 日內至數日週期")
 
 start_date, end_date = date_range_sidebar()

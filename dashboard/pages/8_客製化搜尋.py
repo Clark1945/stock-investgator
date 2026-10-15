@@ -9,9 +9,19 @@ if str(ROOT_DIR) not in sys.path:
 import pandas as pd
 import streamlit as st
 
-from src.db.repo import query_company_profiles, query_recent_stock_ohlc_bulk, query_timeseries_like
+from src.db.repo import (
+    query_all_stock_ohlc_since,
+    query_company_profiles,
+    query_recent_stock_ohlc_bulk,
+    query_timeseries_like,
+)
 
 st.set_page_config(page_title="客製化搜尋", layout="wide")
+from dashboard.intro import show_intro
+from dashboard.theme import apply_theme
+
+show_intro()
+apply_theme()
 st.title("客製化搜尋")
 
 _profiles = query_company_profiles()
@@ -81,21 +91,32 @@ def _render_pagination(df: pd.DataFrame, key: str) -> None:
         return
     page = st.session_state.get(state_key, 1)
 
-    n_slots = total_pages + 2  # 上一頁 + 頁碼們 + 下一頁
-    cols = st.columns([4] + [0.6] * n_slots)
-    with cols[1]:
-        if st.button("‹", key=f"prev_{key}", disabled=(page <= 1), use_container_width=True):
-            st.session_state[state_key] = max(1, page - 1)
-            st.rerun()
-    for i, p in enumerate(range(1, total_pages + 1), start=2):
-        with cols[i]:
-            if st.button(str(p), key=f"pagebtn_{key}_{p}", type=("primary" if p == page else "secondary"), use_container_width=True):
-                st.session_state[state_key] = p
+    # 頁數很多時只顯示「第一頁、最後一頁、目前頁與前後各一頁」，中間斷開處用「…」，避免按鈕擠成一團。
+    shown = sorted({p for p in (1, total_pages, page - 1, page, page + 1) if 1 <= p <= total_pages})
+    items: list[int | None] = []
+    for p in shown:
+        if items and items[-1] is not None and p - items[-1] > 1:
+            items.append(None)
+        items.append(p)
+
+    with st.container(key=f"pager_{key}"):
+        n_slots = len(items) + 2  # 上一頁 + 頁碼們(含省略號) + 下一頁
+        cols = st.columns([4] + [0.6] * n_slots)
+        with cols[1]:
+            if st.button("‹", key=f"prev_{key}", disabled=(page <= 1), use_container_width=True):
+                st.session_state[state_key] = max(1, page - 1)
                 st.rerun()
-    with cols[n_slots]:
-        if st.button("›", key=f"next_{key}", disabled=(page >= total_pages), use_container_width=True):
-            st.session_state[state_key] = min(total_pages, page + 1)
-            st.rerun()
+        for i, p in enumerate(items, start=2):
+            with cols[i]:
+                if p is None:
+                    st.markdown("<div style='text-align:center;padding-top:0.4rem'>…</div>", unsafe_allow_html=True)
+                elif st.button(str(p), key=f"pagebtn_{key}_{p}", type=("primary" if p == page else "secondary"), use_container_width=True):
+                    st.session_state[state_key] = p
+                    st.rerun()
+        with cols[n_slots]:
+            if st.button("›", key=f"next_{key}", disabled=(page >= total_pages), use_container_width=True):
+                st.session_state[state_key] = min(total_pages, page + 1)
+                st.rerun()
 
 
 def _stock_link(code: str) -> str:
@@ -244,8 +265,72 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
     _render_pagination(result_df, key=page_key)
 
 
+def _screen_price_drop_ranking() -> None:
+    """全部上市普通股「近X個交易日」跌幅排行：今日收盤 vs X個交易日前收盤，只列出下跌的股票，跌最多的排最前面。"""
+    x_days = int(st.number_input("X（交易日）", min_value=1, max_value=250, value=5, step=1, key="drop_days"))
+    st.caption(f"篩選條件：今日收盤價相較 {x_days} 個交易日前的收盤價下跌的股票，依跌幅由大到小排行。")
+
+    # 日曆天數抓寬一點(交易日約佔日曆天的 5/7，再加假日緩衝)，之後再用「各股倒數第 X+1 筆」取基準日。
+    start = (datetime.today() - timedelta(days=int(x_days * 1.5) + 15)).strftime("%Y-%m-%d")
+    rows = query_all_stock_ohlc_since(start)
+    if not rows:
+        st.info("目前尚無股價資料。")
+        return
+
+    df = pd.DataFrame([dict(r) for r in rows])
+    df = df[df["stock_code"].isin(name_map.keys())]
+    df["pos_from_end"] = df.groupby("stock_code").cumcount(ascending=False)
+    latest = df[df["pos_from_end"] == 0].set_index("stock_code")
+    base = df[df["pos_from_end"] == x_days].set_index("stock_code")
+    prev = df[df["pos_from_end"] == 1].set_index("stock_code")
+
+    joined = latest.join(base[["date", "close"]], how="inner", rsuffix="_base")
+    joined = joined.join(prev[["close"]].rename(columns={"close": "close_prev"}), how="left")
+    joined["day_chg_pct"] = (joined["close"] - joined["close_prev"]) / joined["close_prev"] * 100
+    joined = joined[joined["close_base"] > 0]
+    joined["drop_pct"] = (joined["close"] - joined["close_base"]) / joined["close_base"] * 100
+    joined = joined[joined["drop_pct"] < 0]
+
+    if joined.empty:
+        st.info(f"目前沒有近 {x_days} 個交易日下跌的股票，或股價資料不足 {x_days + 1} 個交易日。")
+        return
+
+    st.caption(f"比較區間：{joined['date_base'].mode().iloc[0]} → {joined['date'].max()}（以各檔股票自己的最新一筆與倒數第 {x_days + 1} 筆交易日為準）。")
+
+    result_df = pd.DataFrame(
+        {
+            "股票": [_stock_link(c) for c in joined.index],
+            "產業別": [industry_map.get(c) or "—" for c in joined.index],
+            "當日股價": joined["close"].values,
+            "股價漲跌(%)": joined["day_chg_pct"].values,
+            f"{x_days}日前股價": joined["close_base"].values,
+            f"{x_days}日跌幅(%)": joined["drop_pct"].values,
+            "當日交易量(張)": (joined["volume"] / 1000).round().astype("Int64").values,
+        }
+    )
+
+    result_df = _apply_price_volume_filter(result_df, key="filter_drop")
+    if result_df.empty:
+        st.info("目前篩選區間內沒有符合的股票，請調整股價/交易量範圍。")
+        return
+
+    # 預設跌幅最大的排最前面；分頁後每頁內仍可點欄位標題重新排序。
+    result_df = result_df.sort_values(f"{x_days}日跌幅(%)", ascending=True).reset_index(drop=True)
+    result_df.insert(0, "排名", result_df.index + 1)
+    page_key = "drop_screen_page"
+    page_df = _paginate(result_df, key=page_key)
+    _render_table(
+        page_df,
+        int_cols=["排名", "當日交易量(張)"],
+        pct_cols=["股價漲跌(%)", f"{x_days}日跌幅(%)"],
+        price_cols=["當日股價", f"{x_days}日前股價"],
+    )
+    _render_pagination(result_df, key=page_key)
+
+
 PLACEHOLDER = "請選擇"
-SCREENS = ["連續二個月營收正成長股票", "連續三個月營收正成長股票"]
+DROP_SCREEN = "近X天跌幅排行股票"
+SCREENS = ["連續二個月營收正成長股票", "連續三個月營收正成長股票", DROP_SCREEN]
 picked_screen = st.selectbox("篩選條件", [PLACEHOLDER] + SCREENS, index=0)
 active_screen = picked_screen if picked_screen != PLACEHOLDER else None
 
@@ -253,6 +338,13 @@ st.divider()
 
 if active_screen is None:
     st.info("請先在上方選擇篩選條件。")
+elif active_screen == DROP_SCREEN:
+    st.header(active_screen)
+
+    with st.expander("查看篩選結果", expanded=True, key="result_expander_drop"):
+        _screen_price_drop_ranking()
+
+        st.caption("資料來源同「個股分析」頁的日K（yfinance），點「股票」欄會跳到本站的「個股分析」頁並自動選中該檔股票。")
 elif active_screen in ("連續二個月營收正成長股票", "連續三個月營收正成長股票"):
     n_months = 2 if active_screen == "連續二個月營收正成長股票" else 3
     st.header(active_screen)
