@@ -11,8 +11,62 @@ if str(ROOT_DIR) not in sys.path:
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 from src.db.repo import query_timeseries
+
+
+# Plotly 預設放大/拖曳 X 軸時 Y 軸不會跟著重算，這段 JS 在 zoom/pan 後依「目前可見的資料點」重新貼合 Y 軸範圍，
+# 雙擊還原時則恢復自動範圍。Streamlit 的 st.plotly_chart 沒有開放前端事件，所以改用內嵌 HTML 方式繪製。
+_FIT_Y_JS = """
+(function () {
+  var gd = document.getElementById('{plot_id}'), busy = false;
+  function ms(v) { return typeof v === 'number' ? v : new Date(v).getTime(); }
+  function fit(x0, x1) {
+    var lo = Infinity, hi = -Infinity;
+    gd._fullData.forEach(function (t) {
+      if (t.visible === false || t.visible === 'legendonly') return;
+      var candle = t.type === 'candlestick', a = candle ? t.low : t.y, b = candle ? t.high : t.y, xs = t.x || [];
+      if (!a || !b) return;
+      for (var i = 0; i < xs.length; i++) {
+        var m = ms(xs[i]);
+        if (m >= x0 && m <= x1) {
+          if (a[i] != null && a[i] < lo) lo = a[i];
+          if (b[i] != null && b[i] > hi) hi = b[i];
+        }
+      }
+    });
+    if (lo === Infinity) return;
+    var pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.05 || 1;
+    busy = true;
+    Plotly.relayout(gd, {'yaxis.range': [lo - pad, hi + pad]}).then(function () { busy = false; });
+  }
+  gd.on('plotly_relayout', function (e) {
+    if (busy) return;
+    if (e['xaxis.range[0]'] !== undefined) fit(ms(e['xaxis.range[0]']), ms(e['xaxis.range[1]']));
+    else if (e['xaxis.range']) fit(ms(e['xaxis.range'][0]), ms(e['xaxis.range'][1]));
+    else if (e['xaxis.autorange']) Plotly.relayout(gd, {'yaxis.autorange': true});
+  });
+})();
+"""
+
+
+def render_plotly(fig: go.Figure, height: int, autofit_y: bool = True) -> None:
+    """繪製 Plotly 圖表；autofit_y=True 時，縮放/平移後 Y 軸會自動貼合可見範圍。"""
+    # 內嵌版沒有 Streamlit 幫忙留白，邊距太小時刻度文字與軸標題會被切掉，這裡保證最小邊距並開啟 automargin
+    m = fig.layout.margin
+    fig.update_layout(margin=dict(l=max(m.l or 0, 64), r=max(m.r or 0, 16), t=max(m.t or 0, 44), b=max(m.b or 0, 56)))
+    fig.update_xaxes(automargin=True)
+    fig.update_yaxes(automargin=True)
+    html = fig.to_html(
+        include_plotlyjs="cdn",
+        full_html=True,
+        default_width="100%",
+        default_height=f"{height}px",
+        config={"responsive": True, "scrollZoom": True, "displaylogo": False},
+        post_script=_FIT_Y_JS if autofit_y else None,
+    ).replace("<body>", '<body style="margin:0;background:#fff;border-radius:12px;overflow:hidden">', 1)
+    components.html(html, height=height + 4)
 
 
 def date_range_sidebar(default_days: int = 240):
@@ -82,7 +136,7 @@ def line_chart(df: pd.DataFrame, code: str, title: str | None = None):
         height=320,
         showlegend=False,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    render_plotly(fig, 320, autofit_y=len(sub) >= 3)
 
 
 def multi_line_chart(df: pd.DataFrame, codes: list[str], title: str):
@@ -104,4 +158,4 @@ def multi_line_chart(df: pd.DataFrame, codes: list[str], title: str):
         height=380,
         legend=dict(orientation="h", yanchor="top", y=-0.12, x=0),  # 圖例放圖下方橫排，手機窄螢幕不會擠壓繪圖區
     )
-    st.plotly_chart(fig, use_container_width=True)
+    render_plotly(fig, 380)

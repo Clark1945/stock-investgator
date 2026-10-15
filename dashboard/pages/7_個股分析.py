@@ -9,7 +9,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from dashboard.common import date_range_sidebar, line_chart, load_df
+from dashboard.common import date_range_sidebar, line_chart, load_df, render_plotly
 from src.db.repo import (
     query_company_profiles,
     query_industry_list,
@@ -178,39 +178,48 @@ else:
         height=420,
         yaxis_title="股價(元)",
     )
-    st.plotly_chart(fig, use_container_width=True)
+    render_plotly(fig, 420)
 st.caption("日K線資料來源為 yfinance（台股代號.TW），已涵蓋全部上市公司、回補至 2025-01，並會隨每日執行自動更新。")
 
-st.subheader(f"{picked} 近一週每日交易量")
-recent_ohlc = ohlc_rows_all[-5:] if ohlc_rows_all else []
-if not recent_ohlc:
-    st.info("目前尚無交易量資料。")
+st.subheader(f"{picked} 每日漲跌幅 + 交易量")
+week_mode = st.radio("顯示區間", ["近一週", "近兩週"], horizontal=True, key="week_mode")
+n_days = 5 if week_mode == "近一週" else 10
+# 多取一筆前一交易日，才算得出區間第一天的漲跌幅
+recent_ohlc = ohlc_rows_all[-(n_days + 1):] if ohlc_rows_all else []
+if len(recent_ohlc) < 2:
+    st.info("目前尚無足夠的股價/交易量資料。")
 else:
-    df_vol = pd.DataFrame([dict(r) for r in recent_ohlc])
-    df_vol["date"] = pd.to_datetime(df_vol["date"]).dt.strftime("%Y-%m-%d")
-    df_vol["volume_lots"] = df_vol["volume"] / 1000
-    fig_vol = go.Figure(
-        data=[
-            go.Bar(
-                x=df_vol["date"],
-                y=df_vol["volume_lots"],
-                marker_color="#60a5fa",
-                text=df_vol["volume_lots"].map(lambda v: f"{v:,.0f}"),
-                textposition="outside",
-            )
-        ]
+    df_w = pd.DataFrame([dict(r) for r in recent_ohlc])
+    df_w["chg_pct"] = df_w["close"].pct_change() * 100
+    df_w = df_w.iloc[1:] if len(df_w) > n_days else df_w.dropna(subset=["chg_pct"])
+    df_w["label"] = pd.to_datetime(df_w["date"]).dt.strftime("%m/%d")
+    df_w["lots"] = df_w["volume"] / 1000
+    up, down, flat = "#ef4444", "#22c55e", "#9ca3af"  # 台股慣例：紅漲綠跌，與日K線同色
+    colors = [up if v > 0 else down if v < 0 else flat for v in df_w["chg_pct"]]
+
+    def _tag(v: float) -> str:
+        return f"🔺 {v:+.2f}%" if v > 0 else f"🔻 {v:+.2f}%" if v < 0 else f"➖ {v:+.2f}%"
+
+    fig_w = go.Figure(
+        go.Bar(
+            x=df_w["label"], y=df_w["lots"], marker_color=colors,
+            text=[f"{v:,.0f}" for v in df_w["lots"]], textposition="outside", cliponaxis=False,
+            customdata=[_tag(v) for v in df_w["chg_pct"]],
+            hovertemplate="%{x}<br>成交量 %{y:,.0f} 張<br>%{customdata}<extra></extra>",
+        )
     )
-    fig_vol.update_layout(
-        margin=dict(l=10, r=10, t=30, b=10),
-        height=240,
-        yaxis_title="成交量(張)",
-        xaxis_type="category",
-        uniformtext_minsize=10,
-    )
-    st.plotly_chart(fig_vol, use_container_width=True)
+    # 漲跌幅以紅/綠字放在每根成交量柱上方(位於成交量數字之上)，不另外畫漲跌幅柱
+    for x, y, v, c in zip(df_w["label"], df_w["lots"], df_w["chg_pct"], colors):
+        fig_w.add_annotation(x=x, y=y, text=f"<b>{_tag(v)}</b>", showarrow=False, yshift=30, font=dict(color=c, size=13 if n_days <= 5 else 11))
+    fig_w.update_yaxes(range=[0, df_w["lots"].max() * 1.35], title_text="成交量(張)")
+    fig_w.update_xaxes(type="category")
+    fig_w.update_layout(showlegend=False, height=320, margin=dict(l=10, r=10, t=20, b=10))
+    st.plotly_chart(fig_w, use_container_width=True)
 
 st.divider()
 st.header(f"{picked} 三大法人買賣超")
+flow_period = st.radio("顯示區間", ["一週", "一個月", "三個月", "六個月"], horizontal=True, key="flow_period")
+flow_days = {"一週": 5, "一個月": 22, "三個月": 66, "六個月": 132}[flow_period]  # 以交易日計
 flow_codes = [f"foreign_net_{code}", f"trust_net_{code}", f"dealer_net_{code}", f"institutional_net_{code}"]
 df_flow = load_df(flow_codes, start_date, end_date)
 
@@ -227,7 +236,7 @@ else:
     )
     table_flow.index = table_flow.index.strftime("%Y-%m-%d")
     table_flow.index.name = "日期"
-    table_flow = table_flow.sort_index(ascending=False).head(20)
+    table_flow = table_flow.sort_index(ascending=False).head(flow_days)
 
     fmt_flow = {c: "{:+,.0f}" for c in table_flow.columns}
     st.dataframe(table_flow.style.format(fmt_flow, na_rep="—"), use_container_width=True)
