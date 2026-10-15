@@ -31,11 +31,19 @@ industry_map = {r["stock_code"]: r["industry_name"] for r in _profiles}
 PAGE_SIZE = 20
 
 
-def _apply_price_volume_filter(df: pd.DataFrame, key: str) -> pd.DataFrame:
+def _apply_price_volume_filter(df: pd.DataFrame, key: str, with_yoy: bool = False) -> pd.DataFrame:
     """在「當日股價」「當日交易量(張)」欄位上加輸入框+篩選按鈕，按下前維持顯示全部資料。"""
     state_key = f"applied_filter_{key}"
     if state_key not in st.session_state:
         st.session_state[state_key] = None  # None 代表尚未套用篩選(顯示全部)
+
+    yoy_min_in = yoy_max_in = None
+    if with_yoy:  # 年增幅可為負值，所以用「留空=不限」而不是 0
+        yc1, yc2, _ = st.columns([1, 1, 2.6])
+        with yc1:
+            yoy_min_in = st.number_input("營收年增幅下限(%)", value=None, step=5.0, placeholder="不限", key=f"yoy_min_{key}")
+        with yc2:
+            yoy_max_in = st.number_input("營收年增幅上限(%)", value=None, step=5.0, placeholder="不限", key=f"yoy_max_{key}")
 
     col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 0.6])
     with col1:
@@ -49,25 +57,49 @@ def _apply_price_volume_filter(df: pd.DataFrame, key: str) -> pd.DataFrame:
     with col5:
         st.write("")  # 對齊按鈕與上面輸入框的垂直位置
         if st.button("篩選", key=f"apply_filter_{key}"):
-            st.session_state[state_key] = (price_min_in, price_max_in, vol_min_in, vol_max_in)
+            st.session_state[state_key] = (price_min_in, price_max_in, vol_min_in, vol_max_in, yoy_min_in, yoy_max_in)
 
     if st.session_state[state_key] is None:
         st.caption("股價/交易量上下限留 0 代表該側不限制；輸入完按「篩選」才會套用。")
         return df
 
-    p_min, p_max, v_min, v_max = st.session_state[state_key]
+    p_min, p_max, v_min, v_max, y_min, y_max = st.session_state[state_key]
     p_lo, p_hi = p_min, (p_max if p_max > 0 else float("inf"))
     v_lo, v_hi = v_min, (v_max if v_max > 0 else float("inf"))
 
     filtered = df[df["當日股價"].between(p_lo, p_hi) & df["當日交易量(張)"].between(v_lo, v_hi)]
+    if with_yoy:
+        filtered = filtered[filtered["營收年增幅(%)"].between(y_min if y_min is not None else float("-inf"),
+                                                           y_max if y_max is not None else float("inf"))]
 
     st.caption(f"目前套用：股價 {p_lo:g}~{'不限' if p_hi == float('inf') else f'{p_hi:g}'}，"
-               f"交易量 {v_lo:g}~{'不限' if v_hi == float('inf') else f'{v_hi:g}'} 張")
+               f"交易量 {v_lo:g}~{'不限' if v_hi == float('inf') else f'{v_hi:g}'} 張"
+               + (f"，營收年增幅 {'不限' if y_min is None else f'{y_min:g}'}~{'不限' if y_max is None else f'{y_max:g}'} %" if with_yoy else ""))
     if st.button("清除篩選", key=f"clear_filter_{key}"):
         st.session_state[state_key] = None
         st.rerun()
 
     return filtered
+
+
+def _apply_global_sort(df: pd.DataFrame, key: str, default_col: str, page_key: str, default_asc: bool = False) -> pd.DataFrame:
+    """對「全部篩選結果」(跨所有分頁)排序，不是只排目前這一頁。
+    st.dataframe 點欄位標題只會在前端排序當頁的 20 筆，Streamlit 也拿不到點擊事件，
+    所以另外提供排序欄位/方式的選單，在分頁之前就對整份資料排序。
+    """
+    cols = [c for c in df.columns if c != "股票"]
+    c1, c2 = st.columns([2, 1.4])
+    with c1:
+        col = st.selectbox(
+            "排序欄位（對全部結果排序）", cols, index=cols.index(default_col), key=f"sort_col_{key}",
+            on_change=lambda: st.session_state.__setitem__(f"page_{page_key}", 1),
+        )
+    with c2:
+        direction = st.radio(
+            "排序方式", ["由大到小", "由小到大"], index=1 if default_asc else 0, horizontal=True, key=f"sort_dir_{key}",
+            on_change=lambda: st.session_state.__setitem__(f"page_{page_key}", 1),
+        )
+    return df.sort_values(col, ascending=(direction == "由小到大"), na_position="last", kind="stable")
 
 
 def _paginate(df: pd.DataFrame, key: str) -> pd.DataFrame:
@@ -78,7 +110,7 @@ def _paginate(df: pd.DataFrame, key: str) -> pd.DataFrame:
         st.session_state[state_key] = 1
     st.session_state[state_key] = min(max(1, st.session_state[state_key]), total_pages)
     page = st.session_state[state_key]
-    st.caption(f"共 {len(df)} 檔符合，第 {page}/{total_pages} 頁（每頁 {PAGE_SIZE} 筆，點欄位標題可在本頁內排序）")
+    st.caption(f"共 {len(df)} 檔符合，第 {page}/{total_pages} 頁（每頁 {PAGE_SIZE} 筆；上方選單可對全部結果排序，點欄位標題只會排序本頁）")
     start = (page - 1) * PAGE_SIZE
     return df.iloc[start : start + PAGE_SIZE]
 
@@ -245,16 +277,25 @@ def _screen_consecutive_positive_revenue_months(n: int) -> None:
 
     result_df = pd.DataFrame(result_rows)
 
-    result_df = _apply_price_volume_filter(result_df, key=f"filter_{n}")
+    if st.checkbox(
+        "只看破紀錄的成長（最新月增率比上個月的月增率更高，成長在加速）",
+        key=f"accel_{n}",
+        on_change=lambda: st.session_state.update({f"mom_screen_page_{n}": 1}),
+    ):
+        result_df = result_df[result_df[mom_col_names[-1]] > result_df[mom_col_names[-2]]]
+        if result_df.empty:
+            st.info("目前沒有符合「成長加速」的股票。")
+            return
+
+    result_df = _apply_price_volume_filter(result_df, key=f"filter_{n}", with_yoy=True)
     if result_df.empty:
         st.info("目前篩選區間內沒有符合的股票，請調整股價/交易量範圍。")
         return
 
-    # 預設按當日交易量由大到小排序；分頁後每頁內仍可點欄位標題重新排序。
-    result_df = result_df.sort_values("當日交易量(張)", ascending=False, na_position="last")
+    page_key = f"mom_screen_page_{n}"
+    result_df = _apply_global_sort(result_df, key=f"mom_{n}", default_col="當日交易量(張)", page_key=page_key)
     result_df = result_df.reset_index(drop=True)
     result_df.insert(0, "排名", result_df.index + 1)
-    page_key = f"mom_screen_page_{n}"
     page_df = _paginate(result_df, key=page_key)
     _render_table(
         page_df,
@@ -314,10 +355,11 @@ def _screen_price_drop_ranking() -> None:
         st.info("目前篩選區間內沒有符合的股票，請調整股價/交易量範圍。")
         return
 
-    # 預設跌幅最大的排最前面；分頁後每頁內仍可點欄位標題重新排序。
-    result_df = result_df.sort_values(f"{x_days}日跌幅(%)", ascending=True).reset_index(drop=True)
-    result_df.insert(0, "排名", result_df.index + 1)
     page_key = "drop_screen_page"
+    # 預設跌幅最大(數值最小)的排最前面
+    result_df = _apply_global_sort(result_df, key=f"drop_{x_days}", default_col=f"{x_days}日跌幅(%)", page_key=page_key, default_asc=True)
+    result_df = result_df.reset_index(drop=True)
+    result_df.insert(0, "排名", result_df.index + 1)
     page_df = _paginate(result_df, key=page_key)
     _render_table(
         page_df,
