@@ -282,11 +282,24 @@
 (function () {
   const fe = window.frameElement;
   const wrap = fe && fe.parentElement;
-  const hide = () => { if (fe) fe.style.display = "none"; if (wrap) wrap.style.display = "none"; };
-  window.__introDone = hide;
+  const hide = () => { window.__removeCover && window.__removeCover(); if (fe) fe.style.display = "none"; if (wrap) wrap.style.display = "none"; };
+  window.__removeCover = () => { try { const d = window.parent.document; for (const id of ["intro-cover", "intro-precover"]) { const c = d.getElementById(id); if (c) c.remove(); } } catch (e) {} };
+  window.__introDone = () => { window.__removeCover(); hide(); };
   try {
     if (window.parent.sessionStorage.getItem("introShown")) { window.__skipIntro = true; hide(); return; }
     window.parent.sessionStorage.setItem("introShown", "1");
+  } catch (e) {}
+  // 動畫第一格是灰色底：先在外層鋪一張同色幕，避免 iframe 載入前先閃出動畫後的真實頁面。
+  // 幕在柱子開始退場(露出頁面)時移除；保險起見 15 秒後無論如何都會移除。
+  try {
+    const pd = window.parent.document;
+    if (!pd.getElementById("intro-cover")) {
+      const cv = pd.createElement("div");
+      cv.id = "intro-cover";
+      cv.style.cssText = "position:fixed;inset:0;z-index:999999;background:#a9aaa1;pointer-events:none";
+      pd.body.appendChild(cv);
+      setTimeout(() => window.__removeCover(), 15000);
+    }
   } catch (e) {}
   if (fe) {
     Object.assign(fe.style, { position: "fixed", left: "0", top: "0", width: "100vw", height: "100vh",
@@ -420,6 +433,20 @@ function reset() {
   
 }
 
+/* 外層頁面是否已渲染完：腳本不在執行中(沒有右上角 Running 指示)，且主區已有 iframe 以外的內容。最多等 12 秒。 */
+async function pageReady() {
+  const t0 = performance.now();
+  while (performance.now() - t0 < 12000) {
+    try {
+      const d = window.parent.document;
+      const running = d.querySelector('[data-testid="stStatusWidget"]');
+      const blocks = d.querySelectorAll('[data-testid="stMain"] [data-testid="stElementContainer"]').length;
+      if (!running && blocks >= 3) { await wait(150); return; }   // 多等一下讓畫面完成繪製
+    } catch (e) { return; }
+    await wait(100);
+  }
+}
+
 async function play() {
   const id = ++runId;
   const alive = () => id === runId;
@@ -494,8 +521,13 @@ async function play() {
     streakRAF = requestAnimationFrame(drawStreak);
     await step(1100);                                  // 等柱子鋪滿全屏
 
+    // 等外層 Streamlit 頁面真的畫好再露出，不然柱子一退就是空白畫面、等內容出現才「跳」一下
+    await pageReady();
+    if (!alive()) throw 0;
+
     // 7. 柱子沉下，露出自己的畫面
     $("stage").classList.add("reveal");
+    window.__removeCover && window.__removeCover();
     exitStart = performance.now();
     await step(1300);
     cancelAnimationFrame(streakRAF); clearInterval(shardTimer);
