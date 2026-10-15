@@ -16,6 +16,7 @@ from src.collectors import (
     announcements,
     chip_positioning,
     company_profile,
+    etf,
     fundamentals,
     fx_rates_macro,
     institutional_flow,
@@ -36,6 +37,7 @@ COLLECTORS = [
     chip_positioning,
     stock_ohlc,
     company_profile,
+    etf,
     announcements,
     institutional_flow,
 ]

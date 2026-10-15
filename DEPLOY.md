@@ -132,6 +132,7 @@ docker compose up -d --build
 | 不等排程、手動立即更新一次 | `docker compose exec dashboard python -m src.run_daily` |
 | 手動跑一次全市場損益表回補（約1.5~2小時） | `docker compose exec dashboard python scripts/backfill_income_statement_all.py` |
 | 回補中途斷網後補洞（只補還沒資料的公司/指標） | `docker compose exec dashboard python scripts/backfill_income_statement_all.py --only-missing` |
+| 首次部署後回補 ETF（清單+近3年股價+近3年配息，約數分鐘；之後每日排程自動更新） | `docker compose exec dashboard python scripts/backfill_etf.py` |
 | 全部停止 | `docker compose down` |
 | 全部啟動（不重新build） | `docker compose up -d` |
 | 重新 build（改了程式碼或 requirements.txt 之後） | `docker compose up -d --build` |

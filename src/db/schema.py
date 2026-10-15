@@ -95,6 +95,25 @@ CREATE TABLE IF NOT EXISTS manual_entries (
     created_at      TEXT
 );
 
+CREATE TABLE IF NOT EXISTS etf_profile (
+    etf_code        TEXT PRIMARY KEY,
+    name            TEXT,
+    fetched_at      TEXT
+);
+
+CREATE TABLE IF NOT EXISTS etf_dividend (
+    etf_code        TEXT NOT NULL,
+    ex_date         TEXT NOT NULL,
+    cash_dividend   REAL,
+    prev_close      REAL,
+    ref_price       REAL,
+    status          TEXT,
+    fetched_at      TEXT,
+    PRIMARY KEY (etf_code, ex_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_etf_dividend_date ON etf_dividend(ex_date);
+
 CREATE TABLE IF NOT EXISTS collector_run_log (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     run_at          TEXT,

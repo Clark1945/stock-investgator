@@ -436,3 +436,66 @@ def query_run_log(limit: int = 100):
         return c.execute(
             "SELECT * FROM collector_run_log ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
+
+
+def upsert_etf_profile(rows: Iterable[dict]) -> int:
+    """rows 每筆需含 etf_code, name。"""
+    rows = list(rows)
+    with get_connection() as c:
+        for r in rows:
+            c.execute(
+                """
+                INSERT INTO etf_profile (etf_code, name, fetched_at) VALUES (:etf_code, :name, :fetched_at)
+                ON CONFLICT(etf_code) DO UPDATE SET name=excluded.name, fetched_at=excluded.fetched_at
+                """,
+                {**r, "fetched_at": _now_iso()},
+            )
+    return len(rows)
+
+
+def query_etf_profiles():
+    with get_connection() as c:
+        return c.execute("SELECT etf_code, name FROM etf_profile ORDER BY etf_code").fetchall()
+
+
+def upsert_etf_dividends(rows: Iterable[dict]) -> int:
+    """rows 每筆需含 etf_code, ex_date, cash_dividend, prev_close, ref_price, status('actual'|'announced')。
+    已實際除息(actual)的資料不會被後來的預告(announced)覆蓋。"""
+    rows = list(rows)
+    with get_connection() as c:
+        for r in rows:
+            c.execute(
+                """
+                INSERT INTO etf_dividend (etf_code, ex_date, cash_dividend, prev_close, ref_price, status, fetched_at)
+                VALUES (:etf_code, :ex_date, :cash_dividend, :prev_close, :ref_price, :status, :fetched_at)
+                ON CONFLICT(etf_code, ex_date) DO UPDATE SET
+                    cash_dividend=excluded.cash_dividend, prev_close=excluded.prev_close,
+                    ref_price=excluded.ref_price, status=excluded.status, fetched_at=excluded.fetched_at
+                WHERE excluded.status='actual' OR etf_dividend.status!='actual'
+                """,
+                {**r, "fetched_at": _now_iso()},
+            )
+    return len(rows)
+
+
+def query_etf_dividends(etf_code: str | None = None, start_date: str | None = None):
+    sql, params = "SELECT * FROM etf_dividend WHERE 1=1", []
+    if etf_code:
+        sql += " AND etf_code=?"; params.append(etf_code)
+    if start_date:
+        sql += " AND ex_date>=?"; params.append(start_date)
+    with get_connection() as c:
+        return c.execute(sql + " ORDER BY ex_date ASC", params).fetchall()
+
+
+def query_ohlc_for_codes_since(stock_codes: list[str], start_date: str):
+    """一次撈多檔代號自 start_date 起的 date/close/volume，供 ETF 彙總表計算用。"""
+    if not stock_codes:
+        return []
+    ph = ",".join("?" * len(stock_codes))
+    with get_connection() as c:
+        return c.execute(
+            f"SELECT stock_code, date, close, volume FROM stock_ohlc WHERE stock_code IN ({ph}) AND date>=? "
+            "ORDER BY stock_code, date",
+            [*stock_codes, start_date],
+        ).fetchall()
