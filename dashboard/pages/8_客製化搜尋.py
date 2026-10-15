@@ -32,49 +32,36 @@ PAGE_SIZE = 20
 
 
 def _apply_price_volume_filter(df: pd.DataFrame, key: str, with_yoy: bool = False) -> pd.DataFrame:
-    """在「當日股價」「當日交易量(張)」欄位上加輸入框+篩選按鈕，按下前維持顯示全部資料。"""
+    """在「當日股價」「當日交易量(張)」(及選用的「營收年增幅(%)」)欄位上加下限輸入框+篩選按鈕，按下前維持顯示全部資料。"""
     state_key = f"applied_filter_{key}"
-    if state_key not in st.session_state:
+    if state_key not in st.session_state or (st.session_state[state_key] is not None and len(st.session_state[state_key]) != 3):
         st.session_state[state_key] = None  # None 代表尚未套用篩選(顯示全部)
 
-    yoy_min_in = yoy_max_in = None
-    if with_yoy:  # 年增幅可為負值，所以用「留空=不限」而不是 0
-        yc1, yc2, _ = st.columns([1, 1, 2.6])
-        with yc1:
-            yoy_min_in = st.number_input("營收年增幅下限(%)", value=None, step=5.0, placeholder="不限", key=f"yoy_min_{key}")
-        with yc2:
-            yoy_max_in = st.number_input("營收年增幅上限(%)", value=None, step=5.0, placeholder="不限", key=f"yoy_max_{key}")
-
-    col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 0.6])
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 0.6])
     with col1:
         price_min_in = st.number_input("股價下限", value=0.0, step=1.0, key=f"price_min_{key}")
     with col2:
-        price_max_in = st.number_input("股價上限", value=0.0, step=1.0, key=f"price_max_{key}")
-    with col3:
         vol_min_in = st.number_input("交易量下限(張)", value=0, step=100, key=f"vol_min_{key}")
+    yoy_min_in = None
+    with col3:
+        if with_yoy:  # 年增幅可為負值，所以用「留空=不限」而不是 0
+            yoy_min_in = st.number_input("營收年增幅下限(%)", value=None, step=5.0, placeholder="不限", key=f"yoy_min_{key}")
     with col4:
-        vol_max_in = st.number_input("交易量上限(張)", value=0, step=100, key=f"vol_max_{key}")
-    with col5:
         st.write("")  # 對齊按鈕與上面輸入框的垂直位置
         if st.button("篩選", key=f"apply_filter_{key}"):
-            st.session_state[state_key] = (price_min_in, price_max_in, vol_min_in, vol_max_in, yoy_min_in, yoy_max_in)
+            st.session_state[state_key] = (price_min_in, vol_min_in, yoy_min_in)
 
     if st.session_state[state_key] is None:
-        st.caption("股價/交易量上下限留 0 代表該側不限制；輸入完按「篩選」才會套用。")
+        st.caption("下限留 0（年增幅留空）代表不限制；輸入完按「篩選」才會套用。")
         return df
 
-    p_min, p_max, v_min, v_max, y_min, y_max = st.session_state[state_key]
-    p_lo, p_hi = p_min, (p_max if p_max > 0 else float("inf"))
-    v_lo, v_hi = v_min, (v_max if v_max > 0 else float("inf"))
+    p_min, v_min, y_min = st.session_state[state_key]
+    filtered = df[(df["當日股價"] >= p_min) & (df["當日交易量(張)"] >= v_min)]
+    if with_yoy and y_min is not None:
+        filtered = filtered[filtered["營收年增幅(%)"] >= y_min]
 
-    filtered = df[df["當日股價"].between(p_lo, p_hi) & df["當日交易量(張)"].between(v_lo, v_hi)]
-    if with_yoy:
-        filtered = filtered[filtered["營收年增幅(%)"].between(y_min if y_min is not None else float("-inf"),
-                                                           y_max if y_max is not None else float("inf"))]
-
-    st.caption(f"目前套用：股價 {p_lo:g}~{'不限' if p_hi == float('inf') else f'{p_hi:g}'}，"
-               f"交易量 {v_lo:g}~{'不限' if v_hi == float('inf') else f'{v_hi:g}'} 張"
-               + (f"，營收年增幅 {'不限' if y_min is None else f'{y_min:g}'}~{'不限' if y_max is None else f'{y_max:g}'} %" if with_yoy else ""))
+    st.caption(f"目前套用：股價 ≥ {p_min:g}，交易量 ≥ {v_min:g} 張"
+               + (f"，營收年增幅 ≥ {y_min:g}%" if with_yoy and y_min is not None else ""))
     if st.button("清除篩選", key=f"clear_filter_{key}"):
         st.session_state[state_key] = None
         st.rerun()
@@ -82,7 +69,7 @@ def _apply_price_volume_filter(df: pd.DataFrame, key: str, with_yoy: bool = Fals
     return filtered
 
 
-def _apply_global_sort(df: pd.DataFrame, key: str, default_col: str, page_key: str, default_asc: bool = False) -> pd.DataFrame:
+def _apply_global_sort(df: pd.DataFrame, key: str, default_col: str, page_key: str, default_asc: bool = False, flip_cols: tuple = ()) -> pd.DataFrame:
     """對「全部篩選結果」(跨所有分頁)排序，不是只排目前這一頁。
     st.dataframe 點欄位標題只會在前端排序當頁的 20 筆，Streamlit 也拿不到點擊事件，
     所以另外提供排序欄位/方式的選單，在分頁之前就對整份資料排序。
@@ -99,7 +86,10 @@ def _apply_global_sort(df: pd.DataFrame, key: str, default_col: str, page_key: s
             "排序方式", ["由大到小", "由小到大"], index=1 if default_asc else 0, horizontal=True, key=f"sort_dir_{key}",
             on_change=lambda: st.session_state.__setitem__(f"page_{page_key}", 1),
         )
-    return df.sort_values(col, ascending=(direction == "由小到大"), na_position="last", kind="stable")
+    ascending = direction == "由小到大"
+    if col in flip_cols:  # 跌幅欄位存的是負數，「由大到小」要讓跌最多(最負)的排最前面
+        ascending = not ascending
+    return df.sort_values(col, ascending=ascending, na_position="last", kind="stable")
 
 
 def _paginate(df: pd.DataFrame, key: str) -> pd.DataFrame:
@@ -338,33 +328,56 @@ def _screen_price_drop_ranking() -> None:
 
     st.caption(f"比較區間：{joined['date_base'].mode().iloc[0]} → {joined['date'].max()}（以各檔股票自己的最新一筆與倒數第 {x_days + 1} 筆交易日為準）。")
 
+    # 各股最新一個月的官方營收年增率(往前抓3個月，晚公告的公司取它自己最新有資料的月份)。
+    yoy_start = (datetime.today() - timedelta(days=100)).strftime("%Y-%m-%d")
+    yoy_df = pd.DataFrame([dict(r) for r in query_timeseries_like("monthly_revenue_yoy_%", start_date=yoy_start)])
+    rev_yoy_map: dict[str, float] = {}
+    if not yoy_df.empty:
+        yoy_df["stock_code"] = yoy_df["indicator_code"].str.replace("monthly_revenue_yoy_", "", regex=False)
+        rev_yoy_map = yoy_df.sort_values("date").groupby("stock_code")["value"].last().to_dict()
+
     result_df = pd.DataFrame(
         {
             "股票": [_stock_link(c) for c in joined.index],
             "產業別": [industry_map.get(c) or "—" for c in joined.index],
             "當日股價": joined["close"].values,
             "股價漲跌(%)": joined["day_chg_pct"].values,
+            "當日交易量(張)": (joined["volume"] / 1000).round().astype("Int64").values,
             f"{x_days}日前股價": joined["close_base"].values,
             f"{x_days}日跌幅(%)": joined["drop_pct"].values,
-            "當日交易量(張)": (joined["volume"] / 1000).round().astype("Int64").values,
+            "營收年增幅(%)": [rev_yoy_map.get(c) for c in joined.index],
         }
     )
 
-    result_df = _apply_price_volume_filter(result_df, key="filter_drop")
+    reset_page = lambda: st.session_state.update({"drop_screen_page": 1})
+    dc1, dc2, _ = st.columns([1, 1, 2.6])
+    with dc1:
+        drop_lo = st.number_input(f"{x_days}日跌幅下限(%)", value=None, min_value=0.0, step=1.0, placeholder="不限",
+                                  key=f"drop_lo_{x_days}", on_change=reset_page, help="跌幅至少要達到這個值，例如 5 代表只看跌 5% 以上")
+    with dc2:
+        drop_hi = st.number_input(f"{x_days}日跌幅上限(%)", value=None, min_value=0.0, step=1.0, placeholder="不限",
+                                  key=f"drop_hi_{x_days}", on_change=reset_page, help="跌幅最多到這個值，例如 20 代表排除跌超過 20% 的")
+    drop_col = f"{x_days}日跌幅(%)"
+    if drop_lo is not None:
+        result_df = result_df[result_df[drop_col] <= -drop_lo]
+    if drop_hi is not None:
+        result_df = result_df[result_df[drop_col] >= -drop_hi]
+
+    result_df = _apply_price_volume_filter(result_df, key="filter_drop", with_yoy=True)
     if result_df.empty:
         st.info("目前篩選區間內沒有符合的股票，請調整股價/交易量範圍。")
         return
 
     page_key = "drop_screen_page"
-    # 預設跌幅最大(數值最小)的排最前面
-    result_df = _apply_global_sort(result_df, key=f"drop_{x_days}", default_col=f"{x_days}日跌幅(%)", page_key=page_key, default_asc=True)
+    # 預設跌幅最大(數值最小)的排最前面；跌幅欄位的大小以「跌多少」計
+    result_df = _apply_global_sort(result_df, key=f"drop_{x_days}", default_col=f"{x_days}日跌幅(%)", page_key=page_key, flip_cols=(f"{x_days}日跌幅(%)",))
     result_df = result_df.reset_index(drop=True)
     result_df.insert(0, "排名", result_df.index + 1)
     page_df = _paginate(result_df, key=page_key)
     _render_table(
         page_df,
         int_cols=["排名", "當日交易量(張)"],
-        pct_cols=["股價漲跌(%)", f"{x_days}日跌幅(%)"],
+        pct_cols=["股價漲跌(%)", f"{x_days}日跌幅(%)", "營收年增幅(%)"],
         price_cols=["當日股價", f"{x_days}日前股價"],
     )
     _render_pagination(result_df, key=page_key)
