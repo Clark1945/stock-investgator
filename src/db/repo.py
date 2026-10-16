@@ -499,3 +499,14 @@ def query_ohlc_for_codes_since(stock_codes: list[str], start_date: str):
             "ORDER BY stock_code, date",
             [*stock_codes, start_date],
         ).fetchall()
+
+
+def query_first_ohlc_dates(stock_codes: list[str]):
+    """各代號在資料庫裡最早一筆股價日期(欄位名 d)。"""
+    if not stock_codes:
+        return []
+    ph = ",".join("?" * len(stock_codes))
+    with get_connection() as c:
+        return c.execute(
+            f"SELECT stock_code, MIN(date) AS d FROM stock_ohlc WHERE stock_code IN ({ph}) GROUP BY stock_code", stock_codes
+        ).fetchall()
