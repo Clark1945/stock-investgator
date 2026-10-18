@@ -345,6 +345,7 @@ def _screen_price_drop_ranking() -> None:
             "當日交易量(張)": (joined["volume"] / 1000).round().astype("Int64").values,
             f"{x_days}日前股價": joined["close_base"].values,
             f"{x_days}日跌幅(%)": joined["drop_pct"].values,
+            "跌量(萬元)": ((joined["close_base"] - joined["close"]) * joined["volume"] / 10000).round().astype("Int64").values,
             "營收年增幅(%)": [rev_yoy_map.get(c) for c in joined.index],
         }
     )
@@ -376,7 +377,7 @@ def _screen_price_drop_ranking() -> None:
     page_df = _paginate(result_df, key=page_key)
     _render_table(
         page_df,
-        int_cols=["排名", "當日交易量(張)"],
+        int_cols=["排名", "當日交易量(張)", "跌量(萬元)"],
         pct_cols=["股價漲跌(%)", f"{x_days}日跌幅(%)", "營收年增幅(%)"],
         price_cols=["當日股價", f"{x_days}日前股價"],
     )

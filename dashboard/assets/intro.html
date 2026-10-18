@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Green Dream Transition</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>
   :root {
     --dark: #2b2a25;
@@ -282,7 +283,7 @@
 (function () {
   const fe = window.frameElement;
   const wrap = fe && fe.parentElement;
-  const hide = () => { window.__removeCover && window.__removeCover(); if (fe) fe.style.display = "none"; if (wrap) wrap.style.display = "none"; };
+  const hide = () => { window.__removeCover && window.__removeCover(); if (fe) fe.style.display = "none"; if (wrap && wrap.tagName !== "HTML") wrap.style.display = "none"; };
   window.__removeCover = () => { try { const d = window.parent.document; for (const id of ["intro-cover", "intro-precover"]) { const c = d.getElementById(id); if (c) c.remove(); } } catch (e) {} };
   window.__introDone = () => { window.__removeCover(); hide(); };
   try {
@@ -536,7 +537,8 @@ async function play() {
   } catch (e) { /* 被新一輪 play() 中斷 */ }
 }
 
-addEventListener("load", () => { if (!window.__skipIntro) play(); });
+const _start = () => { if (!window.__skipIntro) play(); };
+if (document.readyState === "loading") addEventListener("DOMContentLoaded", _start); else _start();
 </script>
 </body>
 </html>
